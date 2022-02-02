@@ -1,0 +1,405 @@
+********************************************************************************
+*         					 Zone Reading Routines
+*			      
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+****************************************
+*	  LEVEL BUFFER EQUATES
+****************************************
+
+NUM		= 0
+
+	EQUINC	Inst_Type
+	EQUINC	Inst_Speed
+	EQUINC	Inst_SpeedRange	
+	EQUINC	Inst_RegenTime
+	EQUINC	Inst_Data1
+	EQUINC	Inst_Data2
+	EQUINC	Inst_Data3
+	EQUINC	Inst_Region
+	
+	EQUINC	Inst_BufLen
+
+****************************************
+*
+****************************************
+
+IData	Equ	MBase
+
+	MemB	IType
+	MemB	ISpeed
+	MemB	ISpeedRange
+	MemB	IRegen
+	MemB	IData1
+	MemB	IData2
+	MemB	IData3
+	MemB	IRegion
+
+****************************************
+*				Find Level
+*			 a = Level Num
+*           hl = Zone Resource
+*			CY set if not found
+****************************************
+
+FindLevel:
+		ld	d,a				;Save level num in d
+
+	 	ld	a,ResBank		;Set Res Ptr Bank
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_hex	;is this the correct type
+		ret	nz				;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		inc	hl
+		inc	hl
+
+		ld	bc,Inst_BufLen
+
+@loop:
+		ld	a,(hl)
+		cp	d
+		jr	z,@Found
+
+		cp	#ff
+		jr	z,@NotFound
+
+		inc	hl			;skip level number
+
+		add	hl,bc
+
+@loop2:
+		ld	a,(hl)
+		and a
+		jr	z,@nextLevel
+				
+		add	hl,bc
+		jr	@loop2
+
+@nextlevel:
+		inc	hl
+		jr	@loop
+		
+@Found:
+		or	a
+		ret
+
+@NotFound:
+		
+		scf
+		ret
+
+NoInstEntry:
+		ret
+
+****************************************
+*			Spawn Level
+*			 a = Level Num
+*           hl = Zone Resource
+*			CY set if not found
+****************************************
+
+NUM		= 0
+
+		EquInc	IType_Null0
+		EquInc	IType_AncCrys		;1 Ancient Crystal
+		EquInc	IType_Null1			;2 Not Used
+		EquInc	IType_IndesOre		;3 Indestruct Ore
+		EquInc	IType_MindAst		;4 Mined Astr
+		EquInc	IType_CrysAst		;5 Crystal Astr
+		EquInc	IType_Debris1		;6 Space Debris 1
+		EquInc	IType_Debris2		;7 Space Debris 2
+		EquInc	IType_Debris3		;8 Space Debris 3
+		EquInc	IType_AlEgg			;9 Alien Egg
+		EquInc	IType_ClasAst		;10 Classic Astr
+		EquInc	IType_Null2			;11 Not Used
+		EquInc	IType_PowerUp		;12 Power Ups
+		EquInc	IType_Null3			;13 NotUsed
+		EquInc	IType_CrysShip		;14 Crystal Ship
+		EquInc	IType_FuelTran		;15 Fuel Transport
+		EquInc	IType_HexShip		;16 Hex Ship
+		EquInc	IType_Kamik			;17 Kamikaze
+		EquInc	IType_Turret		;18 Living Turret
+		EquInc	IType_Morpho		;19 Morphiod
+		EquInc	IType_AstTug		;20 Astriod Tug
+		EquInc	IType_NukeDrv		;21 Nuke Drivers
+		EquInc	IType_Regen			;22 Regenerator
+		EquInc	IType_Saucer		;23 Saucer
+		EquInc	IType_Repuls		;24 Repulsor ship
+		EquInc	IType_BWorm			;25 Baby Worms
+
+
+SpawnTable:
+		dw		NoInstEntry			;0 Not Used
+
+		dw		Init_Asteroid		;1 Ancient Crystal
+		dw		NoInstEntry			;2 Not Used
+		dw		Init_Asteroid		;3 Indestruct Ore
+		dw		Init_Asteroid		;4 Mined Astr
+		dw		Init_Asteroid		;5 Crystal Astr
+		dw		Init_Asteroid		;6 Space Debris 1
+		dw		Init_Asteroid		;7 Space Debris 2
+		dw		Init_Asteroid		;8 Space Debris 3
+		dw		Init_Asteroid		;9 Alien Egg
+
+		dw		Init_Asteroid		;10 Classic Astr
+		dw		NoInstEntry			;11 Not Used
+
+		dw		Init_PickUp			;12 Power Ups
+		dw		NoInstEntry			;13 NotUsed
+		dw		InitEnemy			;14 Crystal Ship
+		dw		InitEnemy			;15 Fuel Transport
+		dw		InitEnemy			;16 Hex Ship
+		dw		InitEnemy			;17 Kamikaze
+		dw		InitEnemy			;18 Living Turret
+		dw		InitEnemy			;19 Morphiod
+
+		dw		InitEnemy			;20 Astriod Tug
+		dw		InitEnemy			;21 Nuke Drivers
+		dw		InitEnemy			;22 Regenerator
+		dw		InitEnemy			;23 Saucer
+		dw		InitEnemy			;24 Repulsor ship
+		dw		InitEnemy			;25 Baby Worms
+
+SpawnLevel:
+		call	FindLevel
+		jp		c,retbank1
+
+		inc	hl
+
+@loop:
+		ld		a,(hl)			; Get the type data
+		and		a
+		jp		z,retbank1				; return if done
+
+		ld		de,IType
+		
+		do		Inst_BufLen
+		
+		ld		a,(hli)
+		ld		(de),a
+		inc		de
+
+		loop
+
+		push	hl				;Save ptr
+
+		PushBank
+
+		ld		hl,@RetAdd		;Stack Ret add
+		push	hl
+
+		ld		a,(IType)
+		add		a,a				; make index
+		ld		c,a
+		ld		b,0
+
+		ld		hl,SpawnTable
+		add		hl,bc
+		
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+		setbank1
+
+		jp		(hl)
+
+@Retadd:
+		PopBank
+
+		pop		hl
+		jr		@loop
+
+****************************************
+*		     Get Game Settings
+*           hl = Settings Resource
+*			de = Transfer memory
+****************************************
+
+GetSettings:
+GetResData:
+		ld	c,e				;Save the destination in bc
+		ld	b,d
+
+	 	ld	a,ResBank		;Set Res Ptr Bank
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_hex	;is this the correct type
+		jp	nz,retbank1				;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld	d,b				;de = dest
+		ld	e,c
+
+		ld	c,(hl)			;get the hex data length
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+
+@loop:
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		dec	bc
+		ld	a,b
+		or	c
+		jr	nz,@loop
+
+		ret1
+
+****************************************
+*   Get Start Region and Direction
+* 			A = Region bits
+*In:	   Task Buffer is set
+*de = 
+****************************************
+
+		MemB	RegDirX
+		MemB	RegDirY
+		MemB	RegLen
+
+SetRegion:
+		ld		e,a
+
+		and		#0f
+		jr		nz,@again
+		
+		ld		e,#0f
+
+@again:
+		call	Random
+		and		3		
+		call	z,StartTop
+		
+		cp		1
+		call	z,StartBot
+
+		cp		2
+		call	z,StartLeft
+
+		cp		3
+		call	z,StartRight
+		
+		jr		@again
+
+StartTop:		
+		bit		0,e
+		ret		z
+		
+		stn		YCoordH,0
+		
+		call	Random
+		and		#7f
+		add		a,16
+		stx		XCoordH,a
+
+		ld		a,0
+		ld		(RegDirX),a
+		ld		a,1
+		ld		(RegDirY),a
+
+		ld		a,144
+		ld		(RegLen),a
+
+		pop		hl				;Unstack ret add
+		ret
+
+StartBot:
+		bit		2,e
+		ret		z
+		
+		stn		YCoordH,144
+	
+		call	Random
+		and		#7f
+		add		a,16
+		stx		XCoordH,a
+
+		ld		a,0
+		ld		(RegDirX),a
+		ld		a,-1
+		ld		(RegDirY),a
+
+		ld		a,144
+		ld		(RegLen),a
+
+		pop		hl				;Unstack ret add
+		ret
+
+StartLeft:
+		bit		3,e
+		ret		z
+		
+		stn		XCoordH,0
+		
+		call	Random
+		and		#7f
+		add		a,8
+		stx		YCoordH,a
+
+		ld		a,1
+		ld		(RegDirX),a
+		ld		a,0
+		ld		(RegDirY),a
+
+		ld		a,160
+		ld		(RegLen),a
+
+		pop		hl				;Unstack ret add
+		ret
+
+StartRight:
+		bit		3,e
+		ret		z
+		
+		stn		XCoordH,160
+		
+		call	Random
+		and		#7f
+		add		a,8
+		stx		YCoordH,a
+
+		ld		a,-1
+		ld		(RegDirX),a
+		ld		a,0
+		ld		(RegDirY),a
+
+		ld		a,160
+		ld		(RegLen),a
+
+		pop		hl				;Unstack ret add
+		ret
+
+
+

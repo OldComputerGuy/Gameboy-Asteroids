@@ -1,0 +1,375 @@
+********************************************************************************
+*		  	  GameTasker GameBoy Midi Music Playback Engine
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+****************************************
+*	  General Music Variables
+****************************************
+	
+		MemB	MidiBank
+		MemB	MidiTune
+		MemW	MidiAdd
+		MemB	MidiTime
+
+****************************************
+*		   Sound test menu
+****************************************
+
+		MemB	ThisTune
+		MemB	ThisMusic
+
+MusicTest:
+		call	Init_Game_Scr
+		call	InitSound
+		call	InitMusic
+
+		call	InitSpr
+		call	NoFontMap
+
+		ld		a,1
+		ld		(DMA_GO),a
+
+		call	Wait_Fly
+
+		call	CopyChars
+
+		ld		hl,PAL_DebugPal
+		call	SetBGPal
+
+		call	ClsSpace
+		call	ScrToCopy				; Copy the work screen to the copy screen
+
+		ld		a,1
+		ld		(ThisTune),a
+
+		ld		a,0
+		ld		(ThisMusic),a
+
+		ld		a,1
+		ld		(Changed),a
+
+MusicLoop:
+@wf:
+		ldz		a,(ly)
+		cp		64
+		jr		nz,@wf
+
+		ld		hl,#ffff
+		call	SetBG0
+
+		call	Sound_Int
+		call	Midi_Int
+
+		ld		hl,#0000
+		call	SetBG0
+
+		call	GetKeys
+		call	TestReset
+
+		call	Print
+		db		at,0,0,"Music Tester"
+		
+		db		at,2,0,"Music  %b"
+		dw		ThisMusic
+
+		db		at,3,0,"Tune   %b"
+		dw		ThisTune
+		
+		db		stop
+
+		ld		a,(Changed)
+		and		a
+		call	nz,UpdatBackGnd		
+
+		xor		a
+		ld		(Changed),a
+
+		ld		hl,ThisVol
+
+		ld		a,(Trigger)
+		bit		Bit_Key_a,a
+		jr		z,@noa
+
+		ld		(Changed),a
+
+		call	InitMusic
+
+@noa:
+		ld		a,(Trigger)
+		bit		Bit_Key_b,a
+		jr		z,@nob
+
+		ld		(Changed),a
+	
+		call	InitMusic
+
+		ld		hl,MIDI_Introb
+		ld		a,(ThisMusic)
+		ld		e,a
+		ld		d,0
+		add		hl,de
+
+		ld		a,(ThisTune)
+		ld		d,a
+		
+		call	PlayMusic
+
+@nob:
+		ld		a,(Trigger)
+		bit		Bit_Key_Up,a
+		jr		z,@noInc
+
+		ld		(Changed),a
+
+		ld		a,(ThisTune)
+		inc		a
+		and		15
+		ld		(ThisTune),a
+		ld		(MidiTune),a
+
+@noInc:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Down,a
+		jr		z,@noDec
+
+		ld		(Changed),a
+
+		ld		a,(ThisTune)
+		dec		a
+		and		15
+		ld		(ThisTune),a
+		ld		(MidiTune),a
+
+@noDec:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Right,a
+		jr		z,@noInc2
+
+		ld		(Changed),a
+
+		ld		a,(ThisMusic)
+		inc		a
+		and		15
+		ld		(ThisMusic),a
+
+@noInc2:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Left,a
+		jr		z,@noDec2
+
+		ld		(Changed),a
+
+		ld		a,(ThisMusic)
+		dec		a
+		and		15
+		ld		(ThisMusic),a
+
+@noDec2:
+
+		ld		hl,Time
+		inc		(hl)
+
+		jp		MusicLoop
+
+****************************************
+*		 Init Music Engine
+****************************************
+
+InitMusic:
+		xor		a
+		ld		(MidiBank),a
+		jp		InitSound
+		
+****************************************
+*			Play Midi Tune
+*		 hl = Midi Tune resource
+*		 	d = Tune number
+****************************************
+
+PlayMusic:
+
+	 	ld		a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GB_midi	;is this the correct type
+		jp		nz,retbank1		;return if not
+
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+		
+		ld		a,(hli)
+		cp		#aa
+		ret		nz
+
+		ld		a,e		
+		ld		(MidiBank),a
+
+		stm		MidiAdd,hl
+		
+		ld		a,d
+		ld		(MidiTune),a
+		ret1
+	
+****************************************
+*		  Midi Player Interrupt
+****************************************
+
+Midi_Int:
+		ld		hl,MidiTime
+		inc		(hl)
+
+		ld		a,(hl)
+		and		1
+		ret		nz
+
+		ld		a,(MidiBank)
+		and		a
+		ret		z
+				
+		ld		a,(MidiBank)
+		SetBank
+
+		ldm		hl,MidiAdd
+
+		call	MidiByte
+		cp		#ff
+		jr		z,@end
+
+		and		a
+		call	nz,MidiEvents
+
+		stm		MidiAdd,hl
+
+		ret
+		
+@end:
+		xor		a
+		ld		(MidiBank),a
+
+		jp		InitMusic
+		ret
+
+****************************************
+*		Process an event line
+*		a = amount of events
+****************************************
+
+		MemB	TempInst
+
+MidiEvents:
+		ld		c,a
+
+@loop:
+		push	bc
+
+;---------------------------------------
+;				data format
+;
+;			  data1 = CCIIIIII
+;			  data2 = TTTTVVVV
+;			  data3 = 0NNNNNNN
+;key:
+; 		C = Chan : I = Instrument
+; 		T = Tune : V = Volume
+; 		N = Note
+;---------------------------------------
+
+		call	MidiByte
+		ld		d,a				;get data 1
+		
+		and		63
+		ld		(TempInst),a
+
+		ld		a,d
+		rlca
+		rlca
+		and		%00000011
+		ld		e,a
+
+		call	MidiByte
+		ld		d,a				;get data 1
+		and		15
+		ld		b,a
+		
+		ld		a,d
+		swap	a
+		and		15
+		ld		d,a				;d = tune num
+				
+		call	MidiByte		;a = note number
+		and		127
+		ld		c,a
+
+		ld		a,d				;test for tune number
+		and		a
+		jr		z,@global
+
+		ld		a,(MidiTune)		
+		cp		d
+		jr		nz,@Skip
+
+@global:
+		ld		a,(TempInst)
+				
+;	  A = Inst number (#40 - #7f)
+;	  B = Inst volume (#00 - #0f)
+;	  C = Real Note
+;	  E = Channel (0-3)
+
+		push	hl
+		call	PlayInstr
+		pop		hl
+
+		ld		a,(MidiBank)
+		SetBank
+
+@Skip:
+
+		pop		bc
+		dec		c
+		jr		nz,@loop
+		ret
+	
+****************************************
+*		Get Midi Data Byte 
+****************************************
+
+MidiByte:
+		bit		7,h
+		jr		z,@ok
+	
+		ld		a,(MidiBank)
+		inc		a
+		ld		(MidiBank),a
+		
+		SetBank		
+		ld		h,#40
+			
+@ok:
+		ld		a,(hli)
+		ret
+
+
+
+
+		
+		
+
+
+		

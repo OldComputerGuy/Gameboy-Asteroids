@@ -1,0 +1,928 @@
+********************************************************************************
+* 			 ASTERIODS CONTROL PROGRAMS
+********************************************************************************
+
+****************************************
+*	 Handle All collision tests
+****************************************
+
+		MemW	RockBul
+		MemW	RockShip
+		MemW	ShipPow
+		MemW	BulEnemy
+
+RunGroups:
+
+;		de = Group1 & Group2
+;		hl = Notifier Byte
+
+		ld		de,#0201		;check group 1 & 2 for collision		
+		ld		hl,RockBul		;Notifier
+		call	HitGroup
+
+		ld		a,(Cheat)
+		and		a
+		jr		nz,@cheat
+
+		ld		de,#0301		;check group 1 & 2 for collision		
+		ld		hl,RockShip		;Notifier
+		call	HitGroup
+
+@cheat:
+		ld		de,#0304		;check group 1 & 2 for collision		
+		ld		hl,ShipPow		;Notifier
+		call	HitGroup
+
+		ld		de,#0205		;check group 1 & 2 for collision		
+		ld		hl,BulEnemy		;Notifier
+		call	HitGroup
+		ret
+
+****************************************
+*	    	SET UP SHIP
+****************************************
+
+INIT_SHIP
+		xor		a
+		ld		(ThisTask),a
+
+		STN		XCOORD,#4000
+		STN		YCOORD,#4000
+
+		STN		ANIM,0
+		STX		COUNT,50
+		STX		FLAGS,Disable
+
+		STN		XVEL,0 			;X SPEED
+		STN		YVEL,0			;Y SPEED
+
+		STN		ANGLE,0
+
+		MOVE	START_SHIP
+
+		SPR		0	      		;LOG INITIAL TASK
+		JP		PutTask
+
+
+****************************************
+*         MAIN ENTRY FOR SHIP
+****************************************
+
+START_SHIP
+
+		ld		A,(Trigger)
+		bit    	BIT_KEY_A,A
+		call	NZ,Joy_Fire
+
+		ld		A,(Trigger)
+		bit    	BIT_KEY_B,A
+		jp		NZ,Joy_Hyper
+
+		ld		A,(Keys)
+		bit   	BIT_KEY_UP,A
+		call	NZ,Joy_Up
+
+		ld		A,(Trigger)
+		bit   	BIT_KEY_DOWN,A
+		call	NZ,Joy_Down
+
+		ld		A,(Keys)
+		bit    	BIT_KEY_LEFT,A
+		call	NZ,Joy_Left
+
+		ld		A,(Keys)
+		bit    	BIT_KEY_RIGHT,A
+		call	NZ,Joy_Right
+
+;** DO VELOCITY STUFF
+
+		call	AddVels
+		
+		LDW		H,L,YVel
+		call	Do_Drag
+		STW		H,L,YVel
+
+		LDW		H,L,XVel
+		call	Do_Drag
+		STW		H,L,XVel
+
+;	  	 hl = Sequence Number
+;		 bc = Coords
+;		 a	= Group
+;		 d  = Index
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ld		hl,seq_ship1		;Seq num
+		ld		a,0					;set the group
+		CALL	IndexSeq
+
+		LDX		A,COUNT
+		AND		A
+		JR		Z,@OK
+
+		DEC		A
+		STX		COUNT,A
+
+		RET
+
+@OK:	
+
+		ld		a,(RockShip+1)
+		and		a
+		ret		z
+		ld		c,a
+
+		ld		a,(ThisTask)		
+		cp		c
+		ret		nz
+
+		MOVE	SHIP_BANG
+
+		xor		a
+		ld		(RockShip+1),a
+
+		ld		hl,seq_killship
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+SHIP_BANG:		
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+				
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		MOVE	START_SHIP
+
+		STX		ANIM,0				;get the index
+		STN		XVEL,0 			;X SPEED
+		STN		YVEL,0			;Y SPEED
+		STN		ANGLE,0
+		STX		COUNT,50
+		RET
+
+JOY_FIRE:
+		SPR	0
+		CALL	PutTask
+
+		LDW		H,L,XCOORD
+		LDW		D,E,YCOORD
+		LDX		A,ANGLE
+		CALL	INIT_BULLET
+
+		SPR	0
+		CALL	GetTask
+		RET
+
+Joy_Hyper:
+		ld		c,160
+		call	Random_Range
+		ld		h,a
+		ld		l,0
+		stw		h,l,XCoord
+
+		ld		c,120
+		call	Random_Range
+		ld		h,a
+		ld		l,0
+		stw		h,l,YCoord
+
+		Move	HyperWait
+
+HyperWait:
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ld		hl,seq_shipClear	;Seq num
+		ld		a,0					;set the group
+		ld		d,0					;index
+		CALL	IndexSeq
+
+		ld		a,(RockShip+1)
+		ld		c,a
+
+		ld		a,(ThisTask)		
+		cp		c
+		ret		z
+
+		Move	Start_Ship
+		ret
+
+JOY_RIGHT:
+		ldx		a,Angle
+		add		a,8
+		stx		Angle,a
+		RET
+
+
+JOY_LEFT:
+		ldx		a,Angle
+		sub		8
+		stx		Angle,a
+		RET
+
+
+JOY_DOWN:
+		ldx		a,Angle
+		add		a,128
+		stx		Angle,a
+		RET
+
+JOY_UP:
+   		ldx		c,Angle
+		ld		b,2
+		call	GetScaleDirX
+
+		ldw		h,l,XVel
+		add		hl,de
+		call	Cap_Vel
+		jr		c,@CAP
+		stw		h,l,XVel
+
+@CAP:
+   		ldx		c,Angle
+		ld		b,2
+		call	GetScaleDirY
+
+		ldw		h,l,YVel
+		add		hl,de
+		call	Cap_Vel
+		ret		c
+		stw		h,l,YVel
+
+		ret
+
+CAP_VEL:
+		LD	A,H
+		BIT	7,A
+		JR	Z,@POS
+
+		CPL
+		INC	A
+
+		CP	6
+		CCF
+		RET
+@POS:
+		CP	6
+		CCF
+		RET
+
+
+;GET 93%
+
+DO_DRAG:
+
+		LD		A,(TIME)
+		AND		7
+		RET		NZ
+
+		SRA		H
+		RR		L
+
+		LD		E,L				;DE = 1/2
+		LD		D,H
+	
+		SRA		H
+		RR		L
+	
+		LD		C,L				;BC = 1/4
+		LD		B,H
+
+		SRA		H
+		RR		L
+	
+		PUSH	HL				;SP = 1/8
+	
+		SRA		H
+		RR		L				;HL = 1/16
+
+		ADD		HL,DE			;1/16 + 1/2 + 1/4
+		ADD		HL,BC
+		POP		BC
+		ADD		HL,BC
+		
+		RET	
+
+
+****************************************
+*	    SET UP ROCK
+****************************************
+
+Init_PowerUp:
+		xor		a
+		ld		(ThisTask),a
+
+		ld		a,(IRegion)
+		call	SetRegion
+
+		ld		a,(IRegen)
+		stx		Count,a		
+		stx		Angle,a
+
+		stn		XCoord,160
+		stn		XVel,#ff00
+
+		call	Random
+		and		1
+		jr		nz,@ok
+
+		stn		XCoord,-16
+		stn		XVel,#0100
+@ok:
+		stn		YVel,#0000
+
+		call	Random
+		and		127
+		add		a,10
+		ld		h,a
+		ld		l,0
+		stw		h,l,Ycoord
+		
+		stx		Flags,Disable	;Say not a sprite
+
+		move	Run_PowerUp
+
+		call	NewTask
+		ret		c
+		jp		PutTask
+
+****************************************
+*
+****************************************
+
+Run_PowerUp:
+
+		ld		a,(Time)
+		and		63
+		ret		nz
+		
+		ldx		a,Count
+		dec		a
+		stx		Count,a
+		ret		nz
+
+		Move	Do_PowerUp
+
+		ld		hl,seq_pupgsat
+
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		stx		Count,160
+
+Do_Powerup:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+	
+		ldx		a,Count
+		dec		a
+		stx		Count,a
+		jr		z,@Kill
+		
+		ld		a,(ShipPow)
+		and		a
+		ret		z
+		
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		ret		nz
+
+		xor		a
+		ld		(ShipPow),a
+
+
+@Kill:
+;		move	#ffff
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		a,Angle				;sleep
+		stx		Count,a
+
+		stn		XCoord,160
+		stn		XVel,#ff00
+
+		call	Random
+		and		1
+		jr		nz,@ok
+
+		stn		XCoord,-16
+		stn		XVel,#0100
+@ok:
+		stn		YVel,#0000
+
+		call	Random
+		and		127
+		add		a,10
+		ld		h,a
+		ld		l,0
+		stw		h,l,Ycoord
+				
+		move	Run_PowerUp
+		ret
+
+
+****************************************
+*	    SET UP ROCK
+****************************************
+
+Init_Enemy:
+		xor		a
+		ld		(ThisTask),a
+
+;		ld		a,(IRegion)
+;		call	SetRegion
+
+;		ld		a,(IRegen)
+
+		ld		a,20		
+		stx		Count,a	
+		stx		Angle,a
+
+		stn		XCoord,160
+		stn		XVel,#ff00
+
+		call	Random
+		and		1
+		jr		nz,@ok
+
+		stn		XCoord,-16
+		stn		XVel,#0100
+@ok:
+		stn		YVel,2
+
+		call	Random
+		and		1
+		jr		nz,@ok2
+
+		stn		YVel,-2
+
+@ok2:
+		call	Random
+		and		127
+		add		a,10
+		ld		h,a
+		ld		l,0
+		stw		h,l,Ycoord
+		
+		stx		Flags,Disable	;Say not a sprite
+		
+		move	Run_Enemy
+
+		call	NewTask
+		ret		c
+		jp		PutTask
+
+****************************************
+*
+****************************************
+
+Run_Enemy:
+
+		ld		a,(Time)
+		and		31
+		ret		nz
+		
+		ldx		a,Count
+		dec		a
+		stx		Count,a
+		ret		nz
+
+		Move	Do_Enemy
+
+		ld		hl,seq_sswobble
+
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		stx		Count,160
+
+Do_Enemy:
+
+		call	AddVels
+		
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+			
+		ld		a,(BulEnemy)
+		and		a
+		ret		z
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		ret		nz
+
+		xor		a
+		ld		(BulEnemy),a
+
+@Kill:
+;		move	#ffff
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		a,Angle				;sleep
+		stx		Count,a
+
+		jp		Explode
+
+		move	Run_Enemy
+		ret
+
+****************************************
+*	    SET UP ROCK
+****************************************
+
+Init_Asteroid:
+		xor		a
+		ld		(ThisTask),a
+
+		ld		a,(IRegion)
+		call	SetRegion
+
+		ld		a,(IType)
+		stx		Type,a			;Save the type
+		stx		Flags,Disable	;Say not a sprite
+
+		call	Random			;Get a random angle
+		call	SetVels
+		
+		ld		hl,seq_bigrock
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		move	Run_Asteriod
+
+		call	NewTask
+		ret		c
+		jp		PutTask
+
+****************************************
+*
+****************************************
+
+Run_Asteriod:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+		
+		ld		a,(RockBul)
+		and		a
+		ret		z
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		ret		nz
+
+		xor		a
+		ld		(RockBul),a
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldx		a,TYPE
+
+		PUSH	BC
+		PUSH	AF
+		call	INIT_ROCKMID
+		POP		AF
+		POP		BC
+				
+		call	INIT_ROCKMID
+
+		move	#ffff
+		ret
+
+****************************************
+*	    SET UP ROCK
+****************************************
+
+INIT_ROCKMID:
+
+		LD	H,C
+		LD	L,0
+		STW	H,L,XCOORD
+
+		LD	H,B
+		LD	L,0
+		STW	H,L,YCOORD
+
+		xor		a
+		ld		(ThisTask),a
+
+		STX	FLAGS,Disable
+		STX	COUNT,20
+
+		CALL	RANDOM
+		call	SetVels
+		
+		ld		hl,seq_littlerock			;seq_midrock
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		move	START_ROCKMID
+
+		call	NewTask
+		ret		c
+		jp		PutTask
+
+****************************************
+*
+****************************************
+
+START_ROCKMID:
+
+		LDX	A,COUNT
+		AND	A
+		JP	Z,@ZERO
+
+		DEC	A
+		STX	COUNT,A
+
+@ZERO
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		LDX		A,COUNT
+		AND		A
+		RET		NZ
+		
+		ld		a,(RockBul)
+		and		a
+		ret		z
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		ret		nz
+
+		xor		a
+		ld		(RockBul),a
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldx		a,TYPE
+
+		PUSH	BC
+		PUSH	AF
+		call	INIT_ROCKSML
+		POP		AF
+		POP		BC
+				
+		call	INIT_ROCKSML
+
+		move	#ffff
+		ret
+
+****************************************
+*	    SET UP ROCK
+****************************************
+
+INIT_ROCKSML:
+
+		LD	H,C
+		LD	L,0
+		STW	H,L,XCOORD
+
+		LD	H,B
+		LD	L,0
+		STW	H,L,YCOORD
+
+		xor		a
+		ld		(ThisTask),a
+
+		STX	FLAGS,Disable
+		STX	COUNT,20
+
+		CALL	RANDOM
+		call	SetVels
+		
+		LDX		A,TYPE
+		
+		ld		hl,seq_tinyrock
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		MOVE	START_ROCKSML
+
+		CALL	NewTask
+		RET	C
+
+		JP		PutTask
+
+****************************************
+*	    SET UP SHIP
+****************************************
+
+
+START_ROCKSML:
+
+		LDX	A,COUNT
+		AND	A
+		JP	Z,@ZERO
+
+		DEC	A
+		STX	COUNT,A
+
+@ZERO
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+		
+		LDX		A,COUNT
+		AND		A
+		RET		NZ
+		
+		ld		a,(RockBul)
+		and		a
+		ret		z
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		ret		nz
+
+		xor		a
+		ld		(RockBul),a
+
+;		move	#ffff
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		jp		EXPLODE
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldx		a,TYPE
+;		call	SpawnMid	
+	
+		ret
+
+
+****************************************
+*	    SET UP ROCK
+****************************************
+
+INIT_BULLET:
+		
+		STX		ANGLE,A
+		STW		H,L,XCOORD
+		STW		D,E,YCOORD
+
+		STX		FLAGS,Disable
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ldx		c,Angle
+		ld		b,#60
+		call	SetScaleDir
+
+		
+	if 0
+		LDX	A,ANGLE
+		CALL	GETXVEL
+		LD	H,E
+		LD	L,0
+		add	hl,hl
+		STW	H,L,XVEL
+
+		LDX	A,ANGLE
+		CALL	GETYVEL
+		LD	H,E
+		LD	L,0
+		add	hl,hl
+		STW	H,L,YVEL
+	endif
+		
+		STX	COUNT,20
+
+;		call	AddVels
+;		call	AddVels
+
+		MOVE	START_BULLET
+
+		CALL	NewTask
+		RET	C
+
+		JP		PutTask
+
+****************************************
+*	    SET UP SHIP
+****************************************
+
+
+START_BULLET:
+
+		call	AddVels
+
+;	  	 hl = Sequence Number
+;		 bc = Coords
+;		 a	= Group
+;		 d  = Index
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ld		hl,seq_bullet		;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		ldx		a,Count
+		dec		a
+		jr		z,@Quit
+		stx		Count,a
+
+		ld		a,(RockBul+1)
+		and		a
+		ret		z
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		ret		nz
+
+		xor		a
+		ld		(RockBul+1),a
+
+@Quit:
+		MOVE	#FFFF
+		RET	
+
+****************************************
+*
+****************************************
+
+EXPLODE:
+		ld		hl,seq_midbang
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		MOVE	BANG
+
+BANG:
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		MOVE	#FFFF
+		RET

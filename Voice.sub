@@ -1,0 +1,67 @@
+********************************************************************************
+*		  	      GameTasker GameBoy Instrument Engine
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+****************************************
+*	  Initialise all Instruments
+****************************************
+
+InitInstrum:
+
+	ld	A,%10000000	;// Set All Sound bit to on
+	ld	(NR52),A
+
+	ld	A,%01110111		;// Vol set to max & Ext Inputs turned off
+	ld	(NR50),A
+
+	xor	A				;// All sound output stopped
+	ld	(NR51),A
+
+
+;	ld	A,%01111010		;// Sweep 11/3 JV
+	ld	a,0
+	ld	(NR10),A
+
+;	ld	A,#bc			;// Wave pattern duty & length of sound
+	ld	a,%00000000
+	ld	(NR11),A
+
+;	ld	A,#f1			;// Envelope
+
+	ld	a,#f0			;Volume #f
+	ld	(NR12),A
+
+;	ld	A,#83			;// Lower Frequency
+;	ld	(NR13),A
+
+;	ld	A,#46			;// No initialize & Higher Frequency
+;	ld	(NR14),A
+	
+	ld	A,#ff			;// S01,S02(R/L)
+	ld	(NR51),A
+	ret
+
+Sound_Play
+		
+	ld	A,#d6
+	ld	(NR13),A		;low 8 bits
+
+	ld	A,#03			;// Load Sound frequency to play
+	or	#80				;C0
+	ld	(NR14),A		;High 3 bits
+
+	ret
+
+
+;c0 play for length
+;80 play for ever
+
+;bit 7 start up note
+;bit 6 use counter
+
+;// Sound_Data for starters
+
+OCTAVE2	db	#00,#20,#00,#FC,#01,#C2,#02,#1D
+		db	#02,#C7,#03,#58,#03,#D6
+

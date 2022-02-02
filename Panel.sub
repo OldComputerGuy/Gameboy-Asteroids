@@ -1,0 +1,368 @@
+********************************************************************************
+*							Panel Routines
+********************************************************************************
+
+		MemW	PanelScore
+		MemB	PanelShips
+		MemB	PanelDefs
+		MemB	PanelWeap
+		MemB	PanelUpdate
+		MemB	PanelWeapNum
+
+		MemB	PanelTimer
+		MemW	PanelMessage
+
+****************************************
+*			 Init Panal
+****************************************
+
+InitPanel:
+		ld		a,1
+		ld		(PanelUpdate),a
+
+		ld		hl,0
+		stm		PanelScore,hl
+		
+		ld		a,0
+		ld		(PanelShips),a
+
+		ld		a,0
+		ld		(PanelDefs),a
+
+		ld		a,0
+		ld		(PanelWeap),a
+		ld		(PanelWeapNum),a
+
+		ld		a,0
+		ld		(PanelTimer),a
+
+		ld		hl,0
+		stm		PanelMessage,hl
+		ret
+
+****************************************
+*		    Set Panel Stuff
+****************************************
+
+SetScore:
+		stm		PanelScore,hl
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+		ret
+
+SetShips:
+		ld		c,a
+	
+		ldx		a,Remote
+		and		a
+		ret		nz
+		
+		ld		a,c
+		ld		(PanelShips),a
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+		ret
+
+
+SetWeapNum:
+		ld		c,a
+	
+		ldx		a,Remote
+		and		a
+		ret		nz
+		
+		ld		a,c
+		ld		(PanelWeapNum),a
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+
+		ld		a,c
+		ret
+
+
+SetDefs:
+		ld		c,a
+	
+		ldx		a,Remote
+		and		a
+		ret		nz
+		
+		ld		a,c
+		ld		(PanelDefs),a
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+		ret
+
+SetWeap:
+		ld		c,a
+	
+		ldx		a,Remote
+		and		a
+		ret		nz
+		
+		ld		a,c
+
+		ld		(PanelWeap),a
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+
+		ld		a,50
+		ld		(PanelTimer),a
+
+		ld		a,(PanelWeap)
+		call	GetWeapStr
+		stm		PanelMessage,hl
+		ret
+
+SetWeapMsg:
+		ld		c,a
+	
+		ldx		a,Remote
+		and		a
+		ret		nz
+		
+		ld		a,c
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+
+		ld		a,50
+		ld		(PanelTimer),a
+
+		ld		a,c
+		call	GetWeapStr
+		stm		PanelMessage,hl
+		ret
+
+****************************************
+*		 Get Weapon string
+*in:		 a = weapon
+*out:		hl = string
+****************************************
+
+WeapStr:
+NulStr:
+		db	0						;0	Standard Bullet
+		db	"ARMAGEDDON",0			;1	Armageddon
+		db	"MINES",0				;2	Normal Mines
+		db	"HOMING MISSILES",0		;3	Guided Missiles
+		db	"GUN SAT",0				;4	GunSat
+		db	"SMART BOMBS",0			;5	Smart Bomb
+		db	"ION DEFLECTOR",0		;6	Ion Deflector
+		db	"SUPER THRUST",0		;7	Super Thrust
+		db	"BOUNCE BOMB",0			;8	Drill Shot
+		db	"RAMMING SHIELD",0		;9	Ramming Shield
+		db	"TRIGGER BOMB",0		;10	Trigger Bomb
+		db	"PINK FLOYD",0			;11	Wall
+		db	0						;12	Laser (not used)
+		db	"WIDE SHOT",0			;13	Wide Shot
+		db	"FREE SHIP",0			;14	Free ship
+		db	"EXTRA POINTS",0		;15	Extra points
+		db	"DEFENSE POWERUP",0		;16	Defense powerup
+		db	"RANDOM POWERUP",0		;17	Random powerup
+
+		db	"FREEZER SHOT",0		;18	MP Freeze bullets
+		db	"ION GUN",0				;19 MP Elec Short
+		db	"SPEED KILLER",0		;20	MP Slow down
+		db	"DOUBLE POINTS",0		;21	MP Point Double
+		db	"THRUST KILLER",0		;22 MP Disable Thrust
+		db	"WEAPON KILLER",0		;23 MP Disable Weapons
+
+		db	#ff
+
+GetWeapStr:
+		ld		hl,WeapStr
+
+GetStr:								;get the count
+		and		a
+		ret		z
+
+		ld		c,a
+
+@next:
+		ld		a,(hli)
+		cp		#ff
+		jr		z,@end
+	
+		and		a
+		jr		nz,@next		
+
+		dec		c
+		jr		nz,@next
+
+		ret
+
+@end:
+		ld		hl,NulStr
+		ret
+
+****************************************
+*		 Get City string
+*in:		 a = city
+*out:		hl = string
+****************************************
+
+CityStr:
+		db	"LONDON DESTROYED",0
+		db	"PARIS DESTROYED",0
+		db	"CHICAGO DESTROYED",0
+		db	"ROME DESTROYED",0
+		db	"STOCKHOLM DESTROYED",0
+		db	"NEW YORK DESTROYED",0
+		db	"BERLIN DESTROYED",0
+		db	"MOSCOW DESTROYED",0
+		db	#ff
+
+SetCityMsg:
+		and		7
+		ld		hl,CityStr
+		call	GetStr
+		
+		ld		a,1
+		ld		(PanelUpdate),a
+
+		ld		a,50
+		ld		(PanelTimer),a
+
+		stm		PanelMessage,hl
+		ret
+
+****************************************
+*			 Show Panel
+****************************************
+
+WeaponName:
+		db	"  "		;0	Standard Bullet
+		db	"AR"		;1	Armageddon
+		db	"MI"		;2	Normal Mines
+		db	"HM"		;3	Guided Missiles
+		db	"GS"		;4	GunSat
+		db	"SB"		;5	Smart Bomb
+		db	"IC"		;6	Ion Deflector
+		db	"ST"		;7	Super Thrust
+		db	"BB"		;8	Drill Shot
+		db	"RS"		;9	Ramming Shield
+		db	"TB"		;10	Trigger Bomb
+		db	"WL"		;11	Wall
+		db	"  "		;12	Laser (not used)
+		db	"WS"		;13	Wide Shot
+		db	"  "		;14	Free ship
+		db	"  "		;15	Extra points
+		db	"  "		;16	Defense powerup
+		db	"  "		;17	Random powerup
+		db	"FS"		;18	MP Freeze bullets
+		db	"IG"		;19 MP Elec Short
+		db	"SK"		;20	MP Slow down
+		db	"DP"		;21	MP Point Double
+		db	"TK"		;22 MP Disable Thrust
+		db	"WK"		;23 MP Disable Weapons
+
+ShowPanel:
+
+		ld		a,(PanelTimer)
+		and		a
+		call	nz,ShowMessage
+
+		ld		a,(PanelUpdate)
+		and		a
+		ret		z
+
+ForcePanel:
+		xor		a
+		ld		(PanelUpdate),a
+
+		ld		a,2
+		ld		(DirtyBak),a
+
+		ld		a,-1
+		ld		(ThisPal),a
+
+		ld		bc,#0000
+		call	SetPosCopy
+
+		call	Print
+
+		db		"%w"
+		dw		PanelScore
+
+		db		"00 ",#5e,#5f,"%c"
+		dw		PanelShips
+
+;		db		" ",#5e,#5f,"%c"
+
+		db		" D",#5f,"%c"
+		dw		PanelDefs
+
+		db		" "
+		db		stop
+
+		ld		a,(PanelWeap)
+		add		a,a
+		ld		c,a
+		ld		b,0
+		ld		hl,WeaponName
+		add		hl,bc
+		
+		ld		a,(hli)
+
+		push	hl
+		call	PrChr
+		pop		hl
+	
+		ld		a,(hl)
+		call	PrChr
+
+		call	Print
+
+		db		#5f,"%c"
+		dw		PanelWeapNum
+
+		db		stop
+
+
+		ret
+		ret
+				
+****************************************
+*			 Show Message
+****************************************
+
+ShowMessage:
+		dec		a
+		ld		(PanelTimer),a
+		
+		ldm		hl,PanelMessage
+		ld		c,11*2
+
+@count:
+		dec		c
+
+		ld		a,(hli)		
+		and		a
+		jr		nz,@count
+
+		srl		c
+
+		ld		b,17
+		call	SetPos
+
+		ldm		hl,PanelMessage
+
+@loop:
+		ld		a,(hli)
+		and		a
+		ret		z
+
+		push	hl
+		call	PrChr
+		pop		hl
+
+		jr		@loop
+
+		ret		
+		ret

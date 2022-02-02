@@ -1,0 +1,974 @@
+********************************************************************************
+*						Sequence Resource Handlers
+* 		     		 (C) Copyright A.R.Hartley 1999
+********************************************************************************
+
+****************************************
+*			Sequence Equates
+****************************************
+
+;Flags for score
+
+Seq_Bit_Tempo			equ 0
+Seq_Bit_Sound1			equ 1
+Seq_Bit_Sound2			equ 2
+Seq_Bit_Alpha 			equ 3
+Seq_Bit_Group 			equ 4
+Seq_Bit_Layer			equ 5
+Seq_Bit_LoopCount		equ 6
+Seq_Bit_Palette			equ 7
+
+;Flags for score objects
+
+Seq_Bit_GroupInfo		equ 0
+Seq_Bit_LayerInfo		equ 1
+Seq_Bit_AlphaInfo		equ 2
+Seq_Bit_CoordInfo		equ 3
+Seq_Bit_SizeInfo		equ 4
+Seq_Bit_AnimInfo		equ 5
+Seq_Bit_CommandInfo		equ 6
+Seq_Bit_EndLine			equ 7
+
+;Preset Alpha's
+
+ALPHA_null				equ 0
+ALPHA_position			equ 1
+ALPHA_origin			equ 2
+ALPHA_looppoint			equ 3
+ALPHA_loopend			equ 4
+ALPHA_collision			equ 5
+ALPHA_preload			equ 6
+ALPHA_dispose			equ 7
+ALPHA_stop				equ 8
+ALPHA_data				equ 9
+ALPHA_lastentry			equ 10
+
+****************************************
+*		Copy HL to Sequence Base
+*			 HL = SeqBuffer
+****************************************
+
+GetSeq	ld		c,<SeqBase
+		push	hl
+
+		do		SeqBufLen
+
+		ld		a,(hli)
+		ld		(c),a
+		inc		c
+
+		loop
+
+		pop		hl
+		ret
+
+****************************************
+*       Copy Sequence Base to hl
+*			 HL = SeqBuffer
+****************************************
+
+PutSeq	ld		c,<SeqBase
+		push	hl
+
+		do		SeqBufLen
+
+		ld		a,(c)
+		ld		(hli),a
+		inc		c
+
+		loop
+
+		pop		hl
+		ret
+
+****************************************
+*		 Clear All Sequences
+****************************************
+
+InitSeqs:
+ClearSeqs:
+		ld		hl,SeqBuffer + SeqPtrH
+		ld		de,SeqBufLen
+		ld		b,MaxSeqUsed
+		ld		a,#ff
+
+@loop:
+		ld		(hl),a			;Set SeqPtrH to -1
+
+		add		hl,de			;Move to next buffer
+		dec		b
+		jp		nz,@loop
+		RET
+
+****************************************
+*	 Look for a free sequence buffer
+****************************************
+
+LookSeq:
+		ld		hl,SeqBuffer+SeqPtrH
+		ld		de,SeqBufLen
+		ld		b,MaxSeqUsed
+	
+@loop:
+		bit		7,(hl)
+		jr		nz,@Found
+		
+		add		hl,de			;Move to next buffer
+
+		dec		b
+		jr		nz,@loop
+
+		scf
+		ret
+
+@Found:
+		dec		hl
+		or		a
+		ret
+
+****************************************
+*		 Remove a sequence
+*	  	 hl = Sequence Number
+****************************************
+
+KillSeq:
+		ld		de,SeqPtrH
+		add		hl,de
+		
+		ld		(hl),#ff				;give the memory back
+		ret
+
+****************************************
+*	  Initialise an emtpy sequence
+****************************************
+
+EmptySeq:
+
+		call	LookSeq			;Find a free seq buffer
+		ret		c				;return if non found
+		
+		or		a
+		ret1
+
+****************************************
+*		 Initialise a sequence
+*	  	 hl = Sequence Number
+****************************************
+
+		MemW	LastSeqBuf
+		MemW	ThisSeqNum
+
+InitSeq:
+		stm		ThisSeqNum,hl
+
+		call	LookSeq			;Find a free seq buffer
+		ret		c				;return if non found
+
+		stm		LastSeqBuf,hl
+		
+		call	GetSeq			;Put the buffer in highmem
+
+		ldm		hl,ThisSeqNum
+		
+	 	ld		a,ResBank		;Set res bank
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GB_seq		;is this the correct type
+		jp		nz,retbank1		;return if not
+
+		ld		a,(hli)			;get res bank
+		sts		SeqBank,a
+
+		ld		a,(hli)			;get res ptr addr
+		sts		SeqPtr,a
+
+		ld		a,(hl)
+		sts		SeqPtrH,a
+
+		xor		a
+		sts		SeqLoopPtr,a	;Say not loop pointer
+		sts		SeqLoopPtrH,a
+
+		sts		Seq_Group,a		;Group is null
+
+		ld		a,#ff			;Full speed ahead
+		sts		Seq_Tempo,a
+		sts		Seq_Timer,a
+
+		ldm		hl,LastSeqBuf
+		call	PutSeq
+		
+		; Return buffer address in hl
+		
+		or		a
+		ret1
+
+****************************************
+*		 Change a sequence
+*	  	 de = Sequence Number
+*		 hl = Seq Handle
+****************************************
+
+ChangeSeq:
+
+		stm		ThisSeqNum,de
+		stm		LastSeqBuf,hl
+		
+		call	GetSeq			;Put the buffer in highmem
+
+		ldm		hl,ThisSeqNum
+		
+	 	ld		a,ResBank		;Set res bank
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GB_seq		;is this the correct type
+		jp		nz,retbank1		;return if not
+
+		ld		a,(hli)			;get res bank
+		sts		SeqBank,a
+
+		ld		a,(hli)			;get res ptr addr
+		sts		SeqPtr,a
+
+		ld		a,(hl)
+		sts		SeqPtrH,a
+
+		xor		a
+		sts		SeqLoopPtr,a	;Say not loop pointer
+		sts		SeqLoopPtrH,a
+
+		sts		Seq_Group,a		;Group is null
+
+		ld		a,#ff			;Full speed ahead
+		sts		Seq_Tempo,a
+		sts		Seq_Timer,a
+
+		ldm		hl,LastSeqBuf
+		call	PutSeq
+		
+		; Return buffer address in hl
+		
+		or		a
+		ret1
+
+;***************************************
+;		   Run a Sequence
+;		 bc = Origin Coords
+;***************************************
+
+RunSeq:
+		ld		a,c
+		ld		(Seq_X),a
+
+		ld		a,b
+		ld		(Seq_Y),a
+
+		ld		a,1
+		ld		(Seq_DispOn),a
+
+		call	GetSeq
+		
+		push	hl
+		call	ProcessSeq		
+		pop		hl
+
+		call	PutSeq
+		ret1
+
+;***************************************
+;		   Run a Sequence
+;		 bc = Origin Coords
+;***************************************
+
+RunSeqNoDisp:
+		ld		a,c
+		ld		(Seq_X),a
+
+		ld		a,b
+		ld		(Seq_Y),a
+
+		xor		a
+		ld		(Seq_DispOn),a
+
+		call	GetSeq
+		
+		push	hl
+		call	ProcessSeq		
+		pop		hl
+
+		call	PutSeq
+		ret1
+		
+;***************************************
+;		   Process Sequences
+;***************************************			
+
+		MemB	Seq_EndLoop
+		MemB	Seq_Alpha	
+
+		MemB	SeqStartPtr
+		MemB	SeqStartPtrH
+		
+		MemB	SeqBitFlags
+		MemB	Seq_X
+		MemB	Seq_Y
+
+		MemB	Seq_EndX
+		MemB	Seq_EndY
+
+		MemB	Seq_ThisGroup
+		MemB	Seq_LineCount
+
+		MemB	Seq_LX
+		MemB	Seq_LY
+
+		MemB	Seq_AnimL
+		MemB	Seq_AnimH
+
+		MemB	Seq_DispOn
+
+		MemB	Seq_SeqTrig
+
+ProcessSeq:	
+		xor		a						;Clear out the loop end point flag
+		ld		(Seq_EndLoop),a
+		ld		(Seq_LineCount),a
+		ld		(Seq_SeqTrig),a
+		
+		lds		a,SeqPtrH
+		cp		#ff
+		ret		z						;not valid so return				
+
+		ld		h,a
+		lds		l,SeqPtr				;Get the low part
+
+		stm		SeqStartPtr,hl			;Save a copy of SeqPtr for looping
+
+	 	lds		a,SeqBank				;Set bank
+		setbank
+
+		ld		a,#ff					;Say end of seq
+		ld		(Seq_Alpha),a
+
+		ld		a,(hli)	
+		cp 		#ff						;End of sequnce (ENDDATA_FLAG)
+		ret		z
+
+		inc		hl						;Skip over next line high byte
+
+		xor		a						;Say no alpha
+		ld		(Seq_Alpha),a
+
+		ld		a,(hli)					;Get Line Flags
+		and		a
+		jr		z,@NoLineFlags
+	
+		ld		e,a
+
+		bit		Seq_Bit_Tempo,e			;Test for tempo change
+		jr		z,@NoTempo
+	
+		ld		a,(hli)					;Save the tempo
+		sts		Seq_Tempo,a
+	
+@NoTempo:
+
+		bit		Seq_Bit_Sound1,e		;Test for Sound1
+		jr		z,@NoSound1
+
+		ld		a,(hli)					;Get Sound1
+@NoSound1:
+
+		bit		Seq_Bit_Sound2,e		;Test for Sound2
+		jr		z,@NoSound2
+
+		ld		a,(hli)					;Get Sound2
+
+@NoSound2:
+
+		bit		Seq_Bit_Palette,e		;Test for palette
+		jr		z,@NoPalette
+
+		push	de
+		
+		ld		a,(hli)					;Get the palette num in de
+		ld		e,a
+
+		ld		a,(hli)
+		ld		d,a
+		
+		push	hl
+		PushBank
+		call	MaskPalette
+		PopBank
+		pop		hl
+
+		pop		de
+
+@NoPalette:
+
+		bit		Seq_Bit_Group,e			;Test for Group
+		jr		z,@NoGroup
+
+		ld		a,(hli)					;Get Group
+		sts		Seq_Group,a
+
+@NoGroup:
+
+		bit		Seq_Bit_Layer,e			;Test for Layer
+		jr		z,@NoLayer
+
+		ld		a,(hli)					;Get Layer
+
+@NoLayer:
+
+		bit		Seq_Bit_LoopCount,e		;Test for Loop Counter
+		jr		z,@NoLoopC
+
+		ld		a,(hli)					;Get Loop Count
+
+@NoLoopC:
+
+@NoLineFlags:
+
+;-----------------------------------------
+;			Handle Sequences
+;-----------------------------------------
+
+@SeqLoop:
+		xor		a
+		ld		(Seq_Alpha),a
+
+		lds		a,Seq_Group
+		ld		(Seq_ThisGroup),a
+
+		ld		a,(hli)					;Get Index (ignor at the moment)
+
+@NotSame:
+
+		ld		a,(hli)					;Get Flags
+		ld		(SeqBitFlags),a
+
+		and		a
+		jr		z,@NoFlags
+		
+		ld		e,a
+
+		bit		Seq_Bit_GroupInfo,e		;Local Group ?
+		jr		z,@NoLGroup
+
+		ld		a,(hli)
+		ld		(Seq_ThisGroup),a
+
+@NoLGroup:
+
+		bit		Seq_Bit_LayerInfo,e		;Local Layer ?
+		jr		z,@NoLLayer
+
+		ld		a,(hli)
+@NoLLayer:
+
+		bit		Seq_Bit_AlphaInfo,e		;Local Layer ?
+		jr		z,@NoLAlpha
+
+		ld		a,(hli)
+		ld		(Seq_Alpha),a			;Save the Alpha Channel
+		
+@NoLAlpha:	
+
+		bit		Seq_Bit_CoordInfo,e		;Coords ?
+		jr		z,@NoCoord
+
+		ld		a,(Seq_X)				;Get Origin X
+		add		a,(hl)					;Add the X Coord
+		ld		(Seq_LX),a
+		ld		c,a
+		inc		hl
+
+		ld		a,(Seq_Y)				;Get Origin Y
+		add		a,(hl)					;Add the Y Coord
+		ld		(Seq_LY),a
+		ld		b,a
+		inc		hl
+				
+@NoCoord:	
+
+		bit		Seq_Bit_SizeInfo,e		;Sizes ?
+		jr		z,@NoSize
+
+		ld		a,(Seq_X)				;Get Origin X
+		add		a,(hl)					;Xsize
+		ld		(Seq_EndX),a
+		inc		hl
+
+		ld		a,(Seq_Y)				;Get Origin X
+		add		a,(hl)					;Xsize
+		ld		(Seq_EndY),a
+		inc		hl
+@NoSize:	
+
+		bit		Seq_Bit_AnimInfo,e		;Local Layer ?
+		jr		z,@NoAnim
+
+		ld		a,(hli)					;Anim Low
+		ld		(Seq_AnimL),a
+		ld		e,a
+
+		ld		a,(hli)					;Anim High
+		ld		(Seq_AnimH),a
+		ld		d,a
+@NoAnim:	
+
+@NoFlags:
+
+;-----------------------------------------
+;		  	  Handle Display
+;-----------------------------------------
+
+		; Display Sprites
+
+
+		ld		a,(Seq_Alpha)
+		and		a
+		jr		nz,@Alpha
+
+		ld		a,(Seq_DispOn)
+		and		a
+		jr		z,@NotAlpha
+		
+		PushBank
+		push	hl
+
+		ld		h,d
+		ld		l,e
+
+		call	Disp_Spr
+		
+		pop		hl
+		PopBank
+		
+		jr		@NotAlpha
+	
+@Alpha:
+
+;		if (Alpha == ALPHA_looppoint)				// Handle loop start objects
+;			ThisSeq->loopptr = StartObjPtr;			// Save start of this line as loop point
+
+		ld		e,a							;Alpha now in e
+
+		ld		a,e
+		cp		ALPHA_looppoint
+		jr		nz,@nolooppnt
+
+			ld		a,(SeqStartPtr)
+			sts		SeqLoopPtr,a
+
+			ld		a,(SeqStartPtrH)
+			sts		SeqLoopPtrH,a
+
+@nolooppnt:
+
+;		if (Alpha == ALPHA_loopend)					// Handle end loops
+;			EndLoop = 1;
+
+		ld		a,e
+		cp		ALPHA_loopend
+		jr		nz,@noloopend
+	
+			ld		a,1
+			ld		(Seq_EndLoop),a
+
+@noloopEnd:
+
+;		if (Alpha == ALPHA_collision)
+;			Add_Collision(	XPos,YPos,XSize,YSize,-1,THIS_ID,THIS_SUB_ID );
+
+		ld		a,e
+		cp		ALPHA_collision
+		jr		nz,@nocollis
+
+;bc = StartY:StartX
+;de = EndY:EndX
+;a = group
+
+		push	hl
+
+		ld		a,(Seq_EndX)
+		ld		e,a
+			
+		ld		a,(Seq_EndY)
+		ld		d,a
+
+		ld		a,(Seq_ThisGroup)
+		and		a
+		call	nz,AddCollision
+			
+		pop		hl
+
+;** Reg D & E now destroyed 
+
+@nocollis:
+
+@NotAlpha:
+
+;		ld		a,(Seq_LineCount)
+;		inc		a
+;		ld		(Seq_LineCount),a
+
+		ld		a,(SeqBitFlags)				;Handle end of line
+		bit		Seq_Bit_EndLine,a
+		jp		z,@SeqLoop
+
+;-----------------------------------------
+;			Tempo Handler
+;-----------------------------------------
+
+		lds		a,Seq_Tempo
+		and		a
+		jr		z,@noTempTest
+
+;		add		a,a				;!!! Temp Tempo
+		ld		e,a
+
+		lds		a,Seq_Timer
+		add		a,e
+		sts		Seq_Timer,a
+		ret		nc
+
+@noTempTest:
+
+;-----------------------------------------
+;
+;-----------------------------------------
+
+		ld		a,(Seq_EndLoop)				;Did we find a loop end flag
+		and		a
+		jr		z,@NotLooping				;Jump if not
+
+		lds		a,SeqLoopPtrH				;Set SeqPtr to the loop point
+		and		a							;Error check high byte
+		jr		z,@NotLooping
+
+		ld		h,a
+		lds		l,SeqLoopPtr
+
+@NotLooping:
+
+;-----------------------------------------
+;				Exit
+;-----------------------------------------
+
+		sts		SeqPtr,l
+		sts		SeqPtrH,h
+
+		ld		a,1							;Signal next step
+		ld		(Seq_SeqTrig),a
+
+;Save hl
+		ret
+
+
+****************************************
+*		Run an indexed Sequence
+*	  	 hl = Sequence Number
+*		 bc = Coords
+*		 a	= Group
+*		 d  = Index
+*		 e  = Resource Index 
+****************************************
+
+IndexSeq:
+		ld		e,0
+
+DualIndexSeq:
+
+		ld		(Seq_ThisGroup),a
+		
+		ld		a,c
+		ld		(Seq_X),a
+
+		ld		a,b
+		ld		(Seq_Y),a
+		
+	 	ld		a,ResBank		;Set res bank
+		setbank
+
+		ld		c,e				;add in resource index
+		ld		b,0
+		add		hl,bc
+		
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GB_seq		;is this the correct type
+		jp		nz,retbank1		;return if not
+
+		ld		a,(hli)			;get res bank
+		ld		e,a
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e
+		setbank
+
+;find index here
+
+		ld		a,d
+		and		a
+		jr		z,@NoIndex
+
+		ld		c,a
+
+@IndLoop:
+		ld		a,(hli)					;Get next line
+		cp		#ff						;end of seq ?
+		jp		z,retbank1				;just ret if so
+		
+		ld		e,a						;form the length data
+		ld		d,(hl)
+
+		add		hl,de
+		dec		c
+		jr		nz,@IndLoop
+
+@NoIndex:
+
+;Enter seq loop here
+
+		ld		a,(hli)
+	
+		cp 		#ff						;End of sequnce (ENDDATA_FLAG)
+		jp		z,retbank1
+
+		inc		hl						;Skip over next line high byte
+
+		ld		a,(hli)					;Get Line Flags
+		and		a
+		jr		z,@NoLineFlags
+	
+		ld		e,a
+
+		bit		Seq_Bit_Tempo,e			;Test for tempo change
+		jr		z,@NoTempo
+	
+		inc		hl						;Skip the tempo
+	
+@NoTempo:
+
+		bit		Seq_Bit_Sound1,e		;Test for Sound1
+		jr		z,@NoSound1
+
+		inc		hl						;Skip Sound1
+		
+@NoSound1:
+
+		bit		Seq_Bit_Sound2,e		;Test for Sound2
+		jr		z,@NoSound2
+
+		inc		hl						;Skip Sound2
+
+@NoSound2:
+
+		bit		Seq_Bit_Palette,e		;Test for palette
+		jr		z,@NoPalette
+
+		push	de
+		
+		ld		a,(hli)					;Get the palette num in de
+		ld		e,a
+
+		ld		a,(hli)
+		ld		d,a
+		
+		push	hl
+		PushBank
+		call	MaskPalette
+		PopBank
+		pop		hl
+
+		pop		de
+
+@NoPalette:
+
+		bit		Seq_Bit_Group,e			;Test for Group
+		jr		z,@NoGroup
+
+		ld		a,(hli)					;Get Group
+		ld		(Seq_ThisGroup),a
+
+@NoGroup:
+
+		bit		Seq_Bit_Layer,e			;Test for Layer
+		jr		z,@NoLayer
+
+		inc		hl						;Skip Layer
+
+@NoLayer:
+
+		bit		Seq_Bit_LoopCount,e		;Test for Loop Counter
+		jr		z,@NoLoopC
+
+		inc		hl						;Skip Loop Count
+
+@NoLoopC:
+
+@NoLineFlags:
+
+;-----------------------------------------
+;			Handle Sequences
+;-----------------------------------------
+
+@SeqLoop:
+		xor		a
+		ld		(Seq_Alpha),a
+
+		ld		a,(hli)					;Get Index (ignor at the moment)
+
+		ld		a,(hli)					;Get Flags
+		ld		(SeqBitFlags),a
+
+		and		a
+		jr		z,@NoFlags
+		
+		ld		e,a
+
+		bit		Seq_Bit_GroupInfo,e		;Local Group ?
+		jr		z,@NoLGroup
+
+		ld		a,(hli)
+		ld		(Seq_ThisGroup),a
+
+@NoLGroup:
+
+		bit		Seq_Bit_LayerInfo,e		;Local Layer ?
+		jr		z,@NoLLayer
+
+		inc		hl
+@NoLLayer:
+
+		bit		Seq_Bit_AlphaInfo,e		;Local Layer ?
+		jr		z,@NoLAlpha
+
+		ld		a,(hli)
+		ld		(Seq_Alpha),a			;Save the Alpha Channel
+		
+@NoLAlpha:	
+
+		bit		Seq_Bit_CoordInfo,e		;Coords ?
+		jr		z,@NoCoord
+
+		ld		a,(Seq_X)				;Get Origin X
+		add		a,(hl)					;Add the X Coord
+		ld		(Seq_LX),a
+		ld		c,a
+		inc		hl
+
+		ld		a,(Seq_Y)				;Get Origin Y
+		add		a,(hl)					;Add the Y Coord
+		ld		(Seq_LY),a
+		ld		b,a
+		inc		hl
+				
+@NoCoord:	
+
+		bit		Seq_Bit_SizeInfo,e		;Sizes ?
+		jr		z,@NoSize
+
+		ld		a,(Seq_X)				;Get Origin X
+		add		a,(hl)					;Xsize
+		ld		(Seq_EndX),a
+		inc		hl
+
+		ld		a,(Seq_Y)				;Get Origin X
+		add		a,(hl)					;Xsize
+		ld		(Seq_EndY),a
+		inc		hl
+@NoSize:	
+
+		bit		Seq_Bit_AnimInfo,e		;Local Layer ?
+		jr		z,@NoAnim
+
+		ld		a,(hli)					;Anim Low
+		ld		e,a
+
+		ld		a,(hli)					;Anim High
+		ld		d,a
+@NoAnim:	
+
+@NoFlags:
+
+;-----------------------------------------
+;		  	  Handle Display
+;-----------------------------------------
+
+		; Display Sprites
+
+		ld		a,(Seq_Alpha)
+		and		a
+		jr		nz,@Alpha
+
+		PushBank		
+		push	hl
+
+		ld		h,d
+		ld		l,e
+
+		call	Disp_Spr
+		
+		pop		hl
+		PopBank
+
+		jr		@NotAlpha
+	
+@Alpha:
+
+;		if (Alpha == ALPHA_collision)
+;			Add_Collision(	XPos,YPos,XSize,YSize,-1,THIS_ID,THIS_SUB_ID );
+
+		cp		ALPHA_collision
+		jr		nz,@nocollis
+
+;bc = StartY:StartX
+;de = EndY:EndX
+;a = group
+
+		push	hl
+
+		ld		a,(Seq_EndX)
+		ld		e,a
+			
+		ld		a,(Seq_EndY)
+		ld		d,a
+
+		ld		a,(Seq_ThisGroup)
+		and		a
+		call	nz,AddCollision
+		;all	AddCollision
+			
+		pop		hl
+
+;** Reg D & E now destroyed 
+
+@nocollis:
+
+@NotAlpha:
+
+		ld		a,(SeqBitFlags)				;Handle end of line
+		bit		Seq_Bit_EndLine,a
+		jp		z,@SeqLoop
+
+		ret1

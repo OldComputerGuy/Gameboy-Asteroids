@@ -1,0 +1,1469 @@
+********************************************************************************
+* 			 ASTERIODS CONTROL PROGRAMS
+********************************************************************************
+
+		IndexBase TaskBase
+
+****************************************
+*		 Get Seq for type
+*			 a = Type
+*			 c = size
+*	 Returns z set for null type
+****************************************
+
+SC_Ancient	equ	4
+SC_Crystal	equ	5
+SC_Debris	equ	3
+SC_Egg		equ	3
+SC_Babyworm	equ	2
+SC_Classic	equ	1
+SC_Meteor	equ	4
+
+SeqDat	macro
+		dw	\1				;Service routine
+		dw	\2,\3,\4
+		endm
+
+NoSeq	Equ 0	;Serv L    M     S
+
+SeqTypeTab:
+		SeqDat	AncServ,	Seq_ancry1,NoSeq,NoSeq				;1 Ancient Crystal
+		SeqDat	GenServ,	NoSeq,NoSeq,NoSeq					;2 Not Used
+		SeqDat	OreServ,	Seq_ore,NoSeq,NoSeq					;3 Indestruct Ore
+		SeqDat	MineServ,	Seq_RockMine,NoSeq,NoSeq			;4 Mined Astr
+		SeqDat	CryServ,	Seq_BigCry,Seq_TinyCry,NoSeq		;5 Crystal Astr
+		SeqDat	DebrisServ,	Seq_Debris1,NoSeq,NoSeq				;6 Space Debris 1
+		SeqDat	DebrisServ,	seq_Debris2,NoSeq,NoSeq				;7 Space Debris 2
+		SeqDat	DebrisServ,	seq_Debris2,NoSeq,NoSeq				;8 Space Debris 3
+		SeqDat	EggServ,	Seq_Egg,NoSeq,NoSeq					;9 Alien Egg
+		SeqDat	ClxServ,	Seq_BigClx,Seq_MedClx,Seq_TinyClx	;10 Classic Astr
+
+		SeqDat	OldServ,	Seq_arbigrock1,Seq_armedrock1,Seq_artinyrock1	;11 Arcade Astr
+		SeqDat	OldServ,	Seq_arbigrock2,Seq_armedrock2,Seq_artinyrock2	;11 Arcade Astr
+		SeqDat	OldServ,	Seq_arbigrock3,Seq_armedrock3,Seq_artinyrock3	;11 Arcade Astr
+		SeqDat	OldServ,	Seq_arbigrock3,Seq_armedrock3,Seq_artinyrock3	;11 Arcade Astr
+
+;		SeqDat	0,			Seq_XLrock,0,0	;10 XL astr
+
+
+GetSeqForType:
+		ldx		a,Type			;Get the correct seq
+		dec		a
+		cp		12-1
+		jr		nc,@null
+
+		ld		l,a
+		ld		h,0
+		
+		add		hl,hl			
+		add		hl,hl	
+		add		hl,hl		; * 8
+
+		ld		de,SeqTypeTab
+		add		hl,de
+
+		inc		hl
+		inc		hl
+
+		ldx		c,Size
+		sla		c
+		ld		b,0
+		add		hl,bc
+		
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+		or		h				; ! Check or null seqs
+		ret
+@null:
+		xor		a
+		ret
+
+****************************************
+*		Run the service routine
+****************************************
+
+ServInit	equ	0
+ServIdle	equ 1
+ServExit	equ 2
+ServHit		equ 3
+
+RunService:
+		push	de
+		push	af
+		
+		ldx		a,Type			;Get the correct seq
+		dec		a
+		cp		12-1
+		jr		nc,@none
+
+		ld		l,a
+		ld		h,0
+		
+		add		hl,hl			
+		add		hl,hl	
+		add		hl,hl		; * 8
+
+		ld		de,SeqTypeTab
+		add		hl,de
+
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+		
+		or		h
+		jr		z,@none
+
+		pop		af
+		pop		de
+
+		jp		(hl)
+
+@none:
+		pop		af
+		pop		de
+		ret
+
+
+
+****************************************
+*			 Get Speed
+****************************************
+
+GetAstSpeed:
+		;Patch
+
+		ld		a,(ThisZone)
+		add		a,a
+		ld		c,a
+
+		ld		a,(ThisLevel)
+		add		a,a
+		add		a,16		
+		add		a,c
+		ld		c,a
+		
+		call	Random
+		and		7
+		sub		4
+		ld		b,a
+		
+		ld		a,c
+		add		a,b
+		ret
+
+		;real code
+
+		ldx		c,RockRng
+		ld		b,c
+		sra		b
+		call	Random_Range
+		sub		b
+		ld		c,a
+		
+		ldx		a,RockSpd
+		add		a,c
+		ret
+
+****************************************
+*	    Initialize an asteroid
+****************************************
+
+		MemB	XPos
+		MemB	YPos
+		MemB	ASize
+
+Init_Arcade_Ast:
+
+;		call	Random
+;		and		3
+;		add		a,11
+
+		ld		a,11			;no loop points
+		ld		(IType),a
+
+		ld		a,#0f			;Start region
+		ld		(IRegion),a
+
+		ld		a,0				;RegenCount
+		ld		(IData1),a
+
+		ld		a,0				;Regen Time
+		ld		(IRegen),a
+
+		ld		a,#10
+		ld		(ISpeed),a
+		
+		ld		a,#02
+		ld		(ISpeedRange),a
+
+Init_Asteroid:
+		call	AllowTask
+		ret		c
+
+		xor		a					;start task
+		ld		(ThisTask),a
+
+		ld		a,(IType)
+		stx		Type,a				;Save the type
+
+		ld		a,(ISpeed)
+		stx		RockSpd,a
+
+		ld		a,(ISpeedRange)
+		stx		RockRng,a
+
+		ld		a,(IRegion)			;the region
+		call	SetRegion
+
+		ld		a,(IRegen)
+		stx		RegenTime,a
+
+		ld		a,(IData1)
+		stx		AstrCount,a
+
+;** Remember !! Asteriod speed **
+
+		ldx		a,XCoordH			;Coords in de
+		ld		(XPos),a
+
+		ldx		a,YCoordH
+		ld		(YPos),a
+
+		xor		a
+		ld		(ASize),a
+
+New_Asteriod:
+	
+		call	GetAstSpeed
+		ld		b,a
+
+		call	Random			;Get a random angle
+		and		#E0				;(Select 8 angles ARH) doms change
+		sub		15				;(Alway choose diags ARH) doms change
+		ld		c,a
+
+		;ld		b,#20
+
+		call	SetScaleDir
+
+New_Astr:
+
+		ld		a,(ASize)
+		stx		Size,a
+
+		xor		a
+		stx		XCoord,a
+		stx		YCoord,a
+
+		ld		a,(XPos)
+		stx		XCoordH,a
+		
+		ld		a,(YPos)
+		stx		YCoordH,a
+
+		call	GetSeqForType
+		ret		z
+		
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		ld		a,ServInit
+		call	RunService
+
+		move	Run_Asteriod		
+		jp		AddTask
+
+;---------------------------------------
+;		  Asteriod main loop
+;---------------------------------------
+
+Run_Asteriod:
+
+		ld		a,ServIdle
+		call	RunService
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+				
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		ld		a,ServHit				;bounce service
+		call	RunService
+
+		ldx		a,Count					;indestructable = #ff
+		cp		#ff
+		ret		z
+
+		call	DecCounter
+		ret		nz
+
+;---------------------------------------
+;		  Asteriod Dispose
+;---------------------------------------
+
+End_Asteroid:
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		a,XCoordH			;Coords in de
+		ld		(XPos),a
+
+		ldx		a,YCoordH
+		ld		(YPos),a
+
+		ldx		a,Size
+		inc		a
+		ld		(ASize),a
+
+		ld		a,ServExit
+		jp		RunService
+
+****************************************
+* Classic Asteriods Service Routine
+****************************************
+
+OldServ:
+		cp		ServInit
+		jr		z,@init
+		
+		cp		ServExit
+		jr		z,@exit
+
+		cp		ServIdle
+		ret		nz
+		
+		jp		LogNMErock			;Log this as a nme
+		
+		
+@init:
+		stx		Count,1
+		ret
+
+@exit:
+		AScore	RockBul+1,1		;arcade
+
+		ld		hl,seq_arrockexpl
+
+		ldx		a,Size				;Current size
+		cp		2
+		jp		z,SequenceAny
+
+		call	Split_Asteriod
+		call	Split_Asteriod
+
+		KillTask
+		ret
+
+****************************************
+*
+****************************************
+
+Split_Asteriod:
+		call	AllowTask
+		jp		nc,New_Asteriod
+		jp		Explode
+
+****************************************
+* Classic Asteriods Service Routine
+****************************************
+
+ClxServ:
+		cp		ServInit
+		jr		z,@init
+		
+		cp		ServExit
+		jr		z,@exit
+
+		cp		ServIdle
+		jp		z,@idle
+		ret
+		
+				
+@init:
+		stx		Count,1
+		ret
+
+@idle:
+		call	LogNMErock			;Log this as a nme
+
+		ldx		a,Size				;Current size
+		and		a
+		ret		nz
+
+		ld		a,(ThisZone)
+		cp		5
+		jp		z,EarthSpawn
+		ret
+
+@exit:
+		AScore	RockBul+1,SC_Classic
+
+		ldx		a,Size				;Current size
+		cp		2
+		jp		z,Explode
+
+		call	New_Classic
+		call	New_Classic
+
+		KillTask
+		ret
+
+****************************************
+* Crystal Asteriods Service Routine
+****************************************
+
+New_Classic:
+
+		ld		a,(ASize)
+		cp		2
+		jp		nz,Split_Asteriod
+		
+		call	Random
+		and		3
+		jp		nz,Split_Asteriod
+		
+InitPyroid:
+
+		call	AllowTask
+		ret		c
+
+;---------------------------------------
+;		Pyroid hot rock part
+;---------------------------------------
+
+		call	Random			;Get a random angle
+		and		#E0				;(Select 8 angles ARH) doms change
+		sub		15				;(Alway choose diags ARH) doms change		
+		stx		Angle,a
+
+		ld		c,a
+		ld		b,#50
+		call	SetScaleDir
+
+		stx		Count,60
+
+		Move	RunPyroid
+		jp		AddTask
+
+RunPyroid:
+		call	AddVels
+
+		call	LogNMErock		;Log this as a nme
+
+		ldx		b,YCoordH				;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_pyrob			;Seq num
+
+		ldx		a,Angle
+		swap	a
+		rra
+		and		#07
+		ld		d,a					;get the index
+
+		ldx		a,Count
+		and		1
+		ld		e,a
+
+		CALL	DualIndexSeq
+
+		ld		a,(Time)
+		and		3
+		call	z,Drag
+		
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,@die
+
+		call	DecCounter
+		ret		nz
+		
+;---------------------------------------
+;		change to small rock
+;---------------------------------------
+
+		ld		hl,Seq_pyrock
+		call	InitSeq
+		stw		h,l,Anim
+
+		move	$
+
+		call	AddVels
+
+		call	LogNMErock		;Log this as a nme
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		ldw		h,l,Anim
+		call	KillSeq
+
+@die:
+		AScore	RockBul+1,SC_Classic
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+*		 Bounce Asteriod
+****************************************
+
+BounceAst:
+		ld		a,(RockBul+1)			;get hitee
+		and		#7f
+		call	GetTaskCoords
+
+		;a = bullet angle
+
+*		c = Direction
+*		b = Fraction (Speed)
+
+		ld		c,a
+		ld		b,#04
+
+		push	bc
+		call	GetScaleDirX
+
+		ld		b,2
+		
+		ldw		h,l,XVel
+		add		hl,de
+
+		call	CapMax
+		jr		c,@cap
+
+		stw		h,l,XVel
+
+@cap:
+		pop		bc
+		call	GetScaleDirY
+
+		ld		b,2
+
+		ldw		h,l,YVel
+		add		hl,de
+
+		call	CapMax
+		ret		c
+
+		stw		h,l,YVel
+		ret
+
+****************************************
+* General Asteriods Service Routine
+****************************************
+
+GenServ:
+		cp		ServInit
+		jr		z,@init
+		
+		cp		ServExit
+		jr		z,@exit
+
+		cp		ServIdle
+		ret		z
+		
+		jp		LogNMErock			;Log this as a nme
+		
+@init:
+		stx		Count,3
+		ret
+
+@exit:
+		AScore	RockBul+1,SC_Classic
+		jp		Explode
+
+****************************************
+* General Asteriods Service Routine
+****************************************
+
+DebrisServ:
+		cp		ServInit
+		jr		z,@init
+	
+		cp		ServHit
+		jr		z,@Hit
+	
+		cp		ServExit
+		jr		z,@exit
+
+		cp		ServIdle
+		jr		z,@idle
+
+		ret
+		
+@idle:
+		call	LogNMErock			;Log this as a nme
+
+		ld		a,(ThisZone)
+		cp		5
+		jp		z,SatRoute
+
+		ret
+		
+@init:
+		stx		Count,10
+		ret
+
+@Hit:
+		call BounceAst
+		ret
+
+@exit:
+		AScore	RockBul+1,SC_Debris
+		jp		Explode
+
+****************************************
+*			 Satelites
+****************************************
+
+SatRoute:
+		
+		pop	hl					; remove return address
+
+SatStart:
+
+		call	Random
+		and		7
+		inc		a
+		stx		Count,a
+
+SatWait:
+		move	$
+
+		call	DecCounter
+		ret		nz
+
+		call	Random
+		and		7
+		ld		l,a
+		ld		h,0
+
+		ld		de,Seq_sat1
+		add		hl,de
+		ld		d,h
+		ld		e,l
+
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	$
+
+		call	LogNMErock		;Log this as a nme
+		call	AddVels
+
+		ld		bc,0
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+				
+		jp		SatStart
+
+****************************************
+* Crystal Asteriods Service Routine
+****************************************
+
+AncServ:		
+		cp	ServIdle
+		ret	nz
+		
+		pop	hl					; remove return address
+
+
+;---------------------------------------		
+;		Ancient Crystal Phase 1
+;---------------------------------------		
+
+AncStart:
+
+		ld		de,Seq_ancry1
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	Anc1
+
+Anc1:
+		call	AddVels
+
+		ldx		b,YCoordH		;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		call	LogNMErock		;Log this as a nme
+				
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+;---------------------------------------		
+;		Ancient Crystal Phase 2
+;---------------------------------------		
+
+		ld		de,Seq_ancry2
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	Anc2
+
+Anc2:
+		call	AddVels
+
+		ldx		b,YCoordH		;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		call	LogNMErock		;Log this as a nme
+				
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+;---------------------------------------		
+;		Ancient Crystal Phase 3
+;---------------------------------------		
+
+		ld		de,Seq_ancry3
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	Anc3
+
+Anc3:
+		call	AddVels
+
+		ldx		b,YCoordH		;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		call	LogNMErock		;Log this as a nme
+				
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+;---------------------------------------		
+;		Ancient Crystal Phase 4
+;---------------------------------------		
+
+		ld		de,seq_ancryshoot	;Seq_ancry4	;warning
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	Anc4
+
+Anc4:
+		call	AddVels
+
+		ldx		b,YCoordH		;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		call	LogNMErock		;Log this as a nme
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+				
+		ld		hl,RockBul
+		call	IfHit
+		
+;---------------------------------------		
+;		Ancient Crystal Phase 5
+;---------------------------------------		
+
+;shoot at player here
+
+		call	PushTask		
+		call	InitAncBullet	;fire anc missile
+		call	PopTask
+
+		stx		Count,3*30
+
+		ld		de,Seq_ancry5	;should be dead
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	Anc5
+
+Anc5:
+		call	DecCounter		;if 3 sec finished
+		jp		z,AncStart		;start anc again
+
+		call	AddVels
+
+		ldx		b,YCoordH		;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		call	LogNMErock		;Log this as a nme
+				
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Ancient
+
+		jp		Explode
+
+****************************************
+* Crystal Asteriods Service Routine
+****************************************
+
+InitAncBullet:
+
+		call	GetShipXY
+
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+
+		stx		Angle,a				;Firing angle
+		
+		ld		c,a
+		ld		b,#30
+		call	SetScaleDir
+
+		ld		hl,seq_ancrybul			;Seq num
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		stx		Count,60
+
+		Move	AncBul
+		jp		AddTask
+
+AncBul:
+		call	AddVels
+
+		call	LogNMErock		;Log this as a nme
+
+
+		ldx		b,YCoordH		;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq handle in anim
+		call	RunSeq
+
+		call	DecCounter
+		jr		z,@Quit
+		
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@quit:
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+* Crystal Asteriods Service Routine
+****************************************
+
+OreServ:
+		cp	ServInit
+		jr	z,@init
+		
+		cp	ServHit
+		jr	z,@Hit
+		ret		
+		
+@init:
+		stx	Count,#ff
+		ret
+
+@Hit:
+		call BounceAst
+		ret
+
+****************************************
+* Mined Asteriods Service Routine
+****************************************
+
+MineServ:
+		cp		ServInit
+		jr		z,@init
+		
+		cp		ServExit
+		jr		z,@exit
+
+		cp		ServIdle
+		ret		nz
+		
+		jp		LogNMErock			;Log this as a nme
+
+		
+@init:
+		stx		Count,3
+		ret
+
+@exit:
+
+		ld		hl,seq_mrockfx			;seq should be radial explosion
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+* Crystal Asteriods Service Routine
+****************************************
+
+CryServ:
+		cp	ServInit
+		jr	z,@init
+		
+		cp	ServIdle
+		jr	z,@idle
+
+		cp	ServExit
+		jr	z,@exit
+		ret
+		
+@init:
+		stx Timer,2*30			;5 secs
+		stx	Count,5
+
+		ldx	a,Size
+		cp	2
+		ret	nz
+
+		stx	Count,1
+		ret
+
+@idle:
+		call LogNMErock			;Log this as a nme
+
+		ldx	a,Size			;is the crys at max size
+		and	a
+		ret	z
+
+		jp	CrysRoute
+
+@exit:
+		AScore	RockBul+1,SC_Crystal
+
+		ldx		a,Size				;Current size
+		cp		1
+		jp		z,Explode
+
+		call	Split_Asteriod
+		call	Split_Asteriod
+
+		KillTask
+		ret
+
+****************************************
+*		  Asteriod Dispose
+****************************************
+
+CrysRoute:
+
+		ldx	a,Timer			;wait for 5 secs
+		dec	a
+		stx	Timer,a
+		
+		and	a				;is timer 0
+		ret	nz
+
+		pop	hl				; remove return address
+
+PulseAgain:
+		ld		de,seq_cryp
+
+		ldw		h,l,Anim	;Seq handle in anim
+		call	ChangeSeq
+
+		stx		Count,5		;reset the count
+
+		move	Pulse
+
+Pulse:
+		call	AddVels
+
+		ldx		b,YCoordH	;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim	;Seq handle in anim
+		call	RunSeq
+
+		call	LogNMErock			;Log this as a nme
+
+		ld		a,(Seq_Alpha)		;Have we got to the end of the pulse
+		cp		#ff
+		jr		z,growcry			;jump if so
+				
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+;		shrink crystal here
+
+		jp		Explode
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		a,XCoordH			;Coords in de
+		ld		(XPos),a
+
+		ldx		a,YCoordH
+		ld		(YPos),a
+
+		ldx		a,Size
+		inc		a
+		ld		(ASize),a
+
+		call	New_Astr
+		KillTask
+		ret
+
+growcry:
+
+;		grow asteroid here
+
+		call	AllowTask
+		jp		c,PulseAgain
+
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		a,XCoordH			;Coords in de
+		ld		(XPos),a
+
+		ldx		a,YCoordH
+		ld		(YPos),a
+
+		xor		a
+		ld		(ASize),a
+
+		call	New_Astr
+		KillTask
+		ret
+		ret
+		
+****************************************
+*	 Alien Egg Service Routine
+****************************************
+
+EggServ:
+		cp		ServInit
+		jr		z,@init
+		
+		cp		ServExit
+		jr		z,@exit
+
+		cp		ServIdle
+		ret		nz
+		
+		jp		LogNMErock			;Log this as a nme
+				
+@init:
+		stx	Count,3
+		ret
+
+@exit:
+		AScore	RockBul+1,SC_Egg
+
+		call	Babyworm
+
+		ld		hl,seq_eggburst
+		call	SequenceAny
+		KillTask
+		ret
+		
+****************************************
+*			 Baby worms
+****************************************
+
+BabyWorm:
+		call	PushTask
+
+		call	Random		
+		stx		Angle,a			;Firing angle
+
+;doms code to make move straight away and scatter		
+
+		ld		bc,0
+		ld		de,#4000		;forward no rotation
+		call	GoAngleDir	
+
+
+		move	RunBWorm1
+		call	AddTask
+
+		jp		PopTask
+
+;---------------------------------------		
+;		   Baby worm phase 1
+;---------------------------------------		
+
+RunBWorm1:
+		call 	LogNMErock			;Log this as a nme
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_worm1_1		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		ld		a,(Time)
+		rrca
+		and		3
+		ld		e,a
+
+		call	DualIndexSeq
+
+		call	GetShipXY
+
+		ld		de,#3010			;slower rotation speed
+
+		ld		a,(Time)
+		and		7
+		call	z,GoAngleDir		;Swing turret round
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Babyworm
+
+;---------------------------------------		
+;		   Baby worm phase 2
+;---------------------------------------		
+
+		move	RunBWorm2
+		ret
+		
+RunBWorm2:
+
+		call 	LogNMErock			;Log this as a nme
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_worm2_1		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		ld		a,(Time)
+		rrca
+		and		3
+		ld		e,a
+
+		call	DualIndexSeq
+
+		call	GetShipXY
+
+		ld		de,#3010			;slower rotation speed
+
+		ld		a,(Time)
+		and		7
+		call	z,GoAngleDir		;Swing turret round
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Babyworm
+
+;---------------------------------------		
+;		   Baby worm phase 3
+;---------------------------------------		
+
+		move	RunBWorm3
+		ret
+		
+RunBWorm3:
+
+		call 	LogNMErock			;Log this as a nme
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_worm3_1		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		ld		a,(Time)
+		rrca
+		and		3
+		ld		e,a
+
+		call	DualIndexSeq
+
+		call	GetShipXY
+
+		ld		de,#3010			;slower rotation speed
+
+		ld		a,(Time)
+		and		7
+		call	z,GoAngleDir		;Swing turret round
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Babyworm
+
+;---------------------------------------		
+;		   Baby worm die
+;---------------------------------------		
+
+		ld		hl,seq_eggburst		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+*	 Spawn Earth Falling Asteriods
+****************************************
+
+;RegenTime
+;AstrCount
+
+EarthSpawn:
+		pop		hl
+
+		stx		RegenTime,4
+		stx		AstrCount,8
+
+StartSpawn:
+
+		call	PushTask
+		call	New_Faller
+		call	PopTask
+		
+		move	$
+
+;---------------------------------------		
+;	   Wait for next regen
+;---------------------------------------		
+
+		ldx		a,RegenTime
+		stx		Count,a
+
+		move	$
+
+		call	LogNMErock			;Log this as a nme
+
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+
+		ldx		a,AstrCount
+		dec		a
+		stx		AstrCount,a
+		
+		jp		nz,StartSpawn
+
+		KillTask
+		ret
+
+****************************************
+*		Falling asteriods
+****************************************
+
+New_Faller:
+		call	AllowTask
+		ret		c
+
+		xor		a					;start task
+		ld		(ThisTask),a
+
+		stx		Type,10				;Save the type
+
+		ld		a,1					;the region
+		call	SetRegion	
+
+		call	GetAstSpeed
+		ld		b,a
+		
+		ldx		a,XCoordH		;Earth falling atrs
+		sub		80
+		sra		a
+		sra		a
+		add		a,128
+		ld		c,a
+
+		call	SetScaleDir
+
+		stx		Size,0
+
+		call	GetSeqForType
+		ret		z
+		
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		move	RunFaller		
+		jp		AddTask
+
+;---------------------------------------		
+;		Falling rock 1
+;---------------------------------------		
+
+RunFaller:
+
+		move	$
+
+		call	LogNMErock			;Log this as a nme
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+				
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,@die
+		
+		ldx		a,YCoordH
+		cp		96
+		ret		c
+		
+		xor		a
+		stx		XVel,a
+		stx		XVelH,a
+
+		stx		YCoordH,95
+
+;---------------------------------------		
+;		New Meteor seq
+;---------------------------------------		
+
+		ld		de,seq_dometeor
+		ldw		h,l,Anim			;Seq handle in anim
+		call	ChangeSeq
+
+		move	$
+
+		call	LogNMErock			;Log this as a nme
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+				
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,@die
+		
+		ldx		a,YCoordH
+		cp		96
+		ret		c
+		
+		stx		YCoordH,95
+
+		ld		a,(Seq_Alpha)
+		cp		MSG_signal1
+		jr		nz,@nope
+
+		ld		a,(Seq_SeqTrig)
+		and		a
+		jr		z,@nope
+
+		xor		a
+		ld		(ShakePos),a
+
+		call	DecCity
+
+@nope:
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		KillTask
+		ret
+
+;---------------------------------------		
+;		 Falling rock die
+;---------------------------------------		
+		
+@die:
+		AScore	RockBul+1,SC_Meteor
+
+		call	AllowTask
+		jp		c,Explode
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldx		a,XCoordH			;Coords in de
+		ld		(XPos),a
+
+		ldx		a,YCoordH
+		ld		(YPos),a
+
+		ldx		a,Size
+		inc		a
+		ld		(ASize),a
+
+		call	New_Classic
+		call	New_Classic
+
+		KillTask
+		ret

@@ -1,0 +1,51 @@
+****************************************
+*			 Get Data Resource
+*           hl = Data Resource
+****************************************
+
+DataHandler:
+
+		cp		Type_GBC_hex	;is this the correct type
+		ret		nz				;return if not
+
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		inc		hl
+		inc		hl
+
+		ld		a,(hli)			;get the handler type
+		cp		1				;test for sfx
+		jr		z,HandleSFX
+		ret
+
+****************************************
+*			Handle SFX
+****************************************
+
+HandleSFX:
+		ld		a,(hl)			;get the handler type
+		inc		hl
+
+		ld		b,(hl)
+		inc		hl
+
+		ld		c,(hl)
+		inc		hl
+
+		ld		e,(hl)
+		
+;  A = Inst number (#40 - #7f)
+;  B = Inst volume (#00 - #0f)
+;  C = Real Note
+;  E = Channel (0-3)
+
+		call	PlayInstr
+		ret

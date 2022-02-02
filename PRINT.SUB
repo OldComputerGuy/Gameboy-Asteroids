@@ -1,0 +1,368 @@
+****************************************
+*		Copy Debug chars to vram
+****************************************
+
+CopyChars:
+
+		ld	hl,Txt_CharSet	;Debbug charset
+
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_hex	;is this the correct type
+		jp	nz,retbank1				;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld		c,(hl)
+		inc		hl
+		ld		b,(hl)
+		inc		hl
+
+		ld		e,l
+		ld		d,h
+
+		ld		hl,#8800
+;		ld		bc,8*96
+
+		xor		a
+		ld		(VBK),a
+
+@Loop:
+		call	Wait_Stat
+
+		ld		a,(de)
+		ld		(hli),a	
+		ld		(hli),a	
+		inc		de
+		
+		dec		bc		
+		ld		a,b
+		or		c
+		jr		nz,@Loop
+		ret1
+
+****************************************
+*	   CLEAR BOTH SCREENS
+****************************************
+
+ClsSpace:
+
+		ld	hl,ScrBuf
+		ld	bc,20*18
+
+@loop:
+		xor	a
+		ld	(hli),a
+
+		ld	a,128
+		ld	(hli),a
+	
+		dec	bc
+		ld	a,b
+		or	c
+		jr	nz,@loop
+		ret
+
+****************************************
+*            SET MAP POSITION
+****************************************
+		
+SetPos:
+			CALL	BakScrPos		;CHPOS
+			LD		A,L
+			LD		(SCRADD),A
+			LD		A,H
+			LD		(SCRADD+1),A
+			RET
+
+****************************************
+*            SET MAP POSITION
+****************************************
+		
+SetPosCopy:
+			CALL	CopyScrPos		;CHPOS
+			LD		A,L
+			LD		(SCRADD),A
+			LD		A,H
+			LD		(SCRADD+1),A
+			RET
+
+****************************************
+*	   PRINT A CHR ON MAP
+****************************************
+
+			MemB	ThisPal
+			MemB	ThisChar
+
+PRCHR
+
+PRCHAR
+			call	MapChars
+
+			ldm		hl,ScrAdd
+ 			
+ 			ld		a,(ThisPal)
+ 			cp		-1
+			jr		z,@nopal
+ 
+ 			and		#07
+ 			ld		e,a
+ 			
+			ld		a,b
+			and		#f8
+			or		e	
+			ld 		(hl),a
+ 
+			inc		hl
+			 						
+			ld		a,c
+			ld 		(hl),c			
+ 
+			inc		hl
+
+			stm		ScrAdd,hl
+
+			ld		a,2
+			ld		(DirtyBak),a
+			ret
+
+@nopal:
+ 			ld 		(hl),b
+ 
+			inc		hl
+			 						
+			ld		a,c
+			ld 		(hl),c			
+ 
+			inc		hl
+
+			stm		ScrAdd,hl
+
+			ld		a,2
+			ld		(DirtyBak),a
+			ret
+
+****************************************
+*	     PRINT A STRING
+****************************************
+
+PRINT
+		pop		hl
+
+@LOOP
+		LD	A,(HL)
+		CP	STOP
+		JP	Z,@END
+
+		CP	AT
+		JP	Z,@AT
+
+		cp	"%"
+		jp	z,@Code
+
+		PUSH	HL
+		CALL	PRCHR
+		POP	HL
+
+		INC	HL
+		JP	@LOOP
+
+@Code:
+		inc	hl
+		ld	a,(hli)
+
+		cp	'c'
+		jr	z,@charnum
+
+		cp	'b'
+		jr	z,@bytenum
+
+		cp	'w'
+		jr	z,@wordnum
+
+		jr	@loop
+
+@charnum:
+		ld	a,(hli)
+		ld	d,(hl)
+		ld	e,a
+		inc	hl
+		
+		push	hl
+		ld		a,(de)
+		call	PrDig
+   		pop		hl
+   		
+   		jr	@loop
+
+@bytenum:
+		ld	a,(hli)
+		ld	d,(hl)
+		ld	e,a
+		inc	hl
+		
+		push	hl
+		ld		a,(de)
+		ld		l,a
+		ld		h,0
+		call	Num3
+   		pop		hl
+   		
+   		jr	@loop
+
+@wordnum:
+		ld	a,(hli)
+		ld	d,(hl)
+		ld	e,a
+		inc	hl
+		
+		push	hl
+		ld		a,(de)
+		ld		l,a
+		inc		de
+		ld		a,(de)
+		ld		h,a
+		call	Num5
+   		pop		hl
+   		
+   		jr	@loop
+
+
+@AT		INC	HL
+		LD	B,(HL)
+		INC	HL
+		LD	C,(HL)
+		INC	HL
+
+		PUSH	HL
+		CALL	SETPOS
+		POP	HL
+
+		JP	@LOOP
+		
+@END	
+		INC	HL
+		JP	(HL)
+
+****************************************
+*	PRINT NUMBER PRG
+****************************************
+ 
+Num5	ld		de,-10000
+		call	Digit
+
+Num4	ld		de,-1000
+		call	Digit
+
+Num3	ld		de,-100
+		call	Digit
+
+Num2	ld		de,-10
+		call	Digit
+
+Num1	ld		a,l
+		call	PrDig
+		ret
+ 
+****************************************
+*	PRINT A DIGIT
+****************************************
+ 
+Digit:
+		xor		a
+@loop:
+		ld		b,h
+		ld		c,l
+		
+		inc		a
+	 	add		hl,de
+	 	jp		c,@loop
+	 	
+	 	ld		h,b
+	 	ld		l,c
+	 	dec		a
+
+PrDig:
+		add		a,48
+
+		push	hl
+	 	call	PrChr
+	 	pop		hl
+ 		ret
+
+****************************************
+*	 		Set Font Map
+*	 HL = FontMap : a = Start Char
+****************************************
+
+		MemW	FontMap
+
+NoFontMap:
+		ld		hl,0
+
+SetFontMap:
+		stm		FontMap,hl
+		ret
+ 
+****************************************
+*	  Map ACSCII to our charset
+*	   a = char : bc = out char
+****************************************
+
+MapChars:
+
+		push	hl
+		push	de
+	
+		ld		b,0
+		ld		c,a
+	
+		ld		a,(FontMap)
+		ld		l,a
+		ld		a,(FontMap+1)
+		ld		h,a
+	
+		or		l
+		jr		z,@nomap
+
+; HL = Background Resource
+; BC = Char
+
+		ld		a,c
+		sub		32
+		ld		c,a
+
+		call	GetMappedChar
+
+		ld		c,d
+		ld		b,e
+
+		pop		de
+		pop		hl
+		ret
+
+@nomap:
+
+		ld		a,c
+		sub		32
+		add		a,128
+		ld		c,a
+		ld		b,0
+
+		pop		de
+		pop		hl
+		ret

@@ -1,0 +1,351 @@
+********************************************************************************
+*             GBLINK MONIOR SOFTWARE FOR NINTENDO GAMEBOY
+********************************************************************************
+****************************************
+*	  		START OF PROGRAM
+****************************************
+
+		MemW	RegBlock			;Points to registers 8 bytes
+		MemS	TraceBuf,3
+		jp		TBRet
+
+MON_ENTER:			
+		PUSH	AF
+		PUSH	HL
+		PUSH	DE
+		PUSH	BC		
+		LD		(RegBlock),SP
+
+		XOR		A
+		LD		(SIOFLAG),A
+
+		CALL	MONCOMMAND
+		
+		POP		BC
+		POP		DE
+		POP		HL
+		POP		AF		
+		RET
+		
+****************************************
+*	     MOTIOR COMMANDS
+****************************************
+
+MONCOMMAND:
+		CALL	GET_ONE
+
+		CP	150
+		JP	Z,ECHOX
+
+		CP	151
+		JP	Z,VERSION
+
+		CP	152
+		JP	Z,GETREGBLOCK
+
+		CP	153				;EXIT DEBUGGER
+		RET	Z
+
+		CP	154				;EXIT DEBUGGER
+		JP	Z,SETTRACEBUF
+
+		CP	155				;EXIT DEBUGGER
+		JP	Z,RUNTRACEBUF
+
+		CP	181
+		JP	Z,EXECCODE
+
+		CP	180
+		JP	Z,DLOAD
+
+ 		CP	182
+		JP	Z,UPLOAD
+
+		CP	183
+		JP	Z,BANKX
+
+		JP	MONCOMMAND
+
+****************************************
+*             FUNCTION 150
+*---------------------------------------
+*	ECHO BYTE AND HANDSHAKE
+****************************************
+
+ECHOX	CALL	GET_ONE
+		CALL	SEND_ONE
+		JP		MONCOMMAND
+
+****************************************
+*            FUNCTION 151
+*---------------------------------------
+*	  SEND VERSION BYTE
+****************************************
+
+VERSNUM		=	#14
+
+VERSION
+		LD		A,VERSNUM
+		CALL	SEND_ONE
+		JP		MONCOMMAND
+
+****************************************
+*           FUNCTION 152
+*---------------------------------------
+*	RETURN REGISTER BLOCK ADDRESS
+****************************************
+
+GETREGBLOCK:
+		LDM		HL,RegBlock
+		LD		DE,2
+		
+		LD		A,L
+		CALL	SEND_ONE
+
+		LD		A,H
+		CALL	SEND_ONE
+		JP		MONCOMMAND
+
+****************************************
+*           FUNCTION 154
+*---------------------------------------
+*		  SET TRACE BUFFER
+****************************************
+
+SETTRACEBUF
+		ld		hl,TraceBuf
+
+		call	Get_One
+		ld		(hli),a
+
+		call	Get_One
+		ld		(hli),a
+
+		call	Get_One
+		ld		(hli),a
+
+		ret
+		
+****************************************
+*           FUNCTION 155
+*---------------------------------------
+*		   RUN TRACE BUFFER
+****************************************
+
+		MemW	OldStack
+
+RUNTRACEBUF
+		ld	(OldStack),sp			;Save this stack
+		ld	sp,(RegBlock)
+
+		pop		bc
+		pop		de
+		pop		hl
+		pop		af		
+
+		jp		TraceBuf
+TBRet:
+		push	af
+		push	hl
+		push	de
+		push	bc		
+		
+		ld	sp,(OldStack)
+		ret
+
+****************************************
+*            FUNCTION 183
+*---------------------------------------
+*	       BANK XX
+****************************************
+
+BANKX
+		CALL	GET_ONE
+		setbank
+		JP		MONCOMMAND
+
+****************************************
+*           FUNCTION 181
+*---------------------------------------
+*      EXECUTE CODE FROM AABB
+****************************************
+
+EXECCODE
+;		CALL	GET_ONE
+;		LD	H,A
+;		CALL	GET_ONE
+;		LD	L,A
+;		JP	(HL)
+
+
+	if MUSICROM = 1
+		jp		SOFTRESET
+	endif
+
+		JP		MONCOMMAND
+			
+****************************************
+*           FUNCTION 180
+*---------------------------------------
+* DOWNLOAD CODE INTO AABB, LENGTH=CCDD
+****************************************
+
+DLOAD
+		CALL	GET_ONE
+		LD	H,A
+
+		CALL	GET_ONE
+		LD	L,A
+
+		CALL	GET_ONE
+		LD	B,A
+
+		CALL	GET_ONE
+		LD	C,A
+
+@LOOP	CALL	GET_ONE
+		LD	E,A		;SAVE BYTE IN E
+
+;		CALL	WRITE_BYTE	;A => (HL)
+
+		LD	(HL),A
+		INC	HL
+
+		DEC	BC
+		LD	A,B
+		OR	C
+		JP	NZ,@LOOP
+
+		JP		MONCOMMAND
+
+
+****************************************
+*            WRITE A => (HL)
+*     WITHOUT EFFECTING THE PAGING
+****************************************
+
+WRITE_BYTE
+		LD	A,H
+		AND	#E0
+		CP	#20
+		JP	Z,@SETBNK
+
+		LD	(HL),E
+		RET
+
+@SETBNK
+		LD	A,#00	   		;SELECT #4000 BANK 0
+		LD	(BANKSEL),A
+		LD	(BANKSELH),A
+
+		SET	6,H
+		LD	(HL),E		
+		RES	6,H	      		;REPAIR HL
+
+		LD	A,(LBANK)
+		LD	(BANKSEL),A
+		XOR	A
+		LD	(BANKSELH),A
+		RET
+
+****************************************
+*             FUNCTION 182
+*---------------------------------------
+*   UPLOAD CODE, FROM HL, LENGTH BC
+****************************************
+
+UPLOAD
+		
+		CALL	GET_ONE
+		LD	H,A
+
+		CALL	GET_ONE
+		LD	L,A
+
+		CALL	GET_ONE
+		LD	B,A
+
+		CALL	GET_ONE
+		LD	C,A
+
+@LOOP
+		LD		A,(HL)
+		CALL	SEND_ONE
+
+		INC	HL
+		DEC	BC
+		LD	A,B
+		OR	C
+		JP	NZ,@LOOP
+		
+		JP	MONCOMMAND
+
+****************************************
+*       GET BYTE FROM PC IN E
+****************************************
+
+GET_ONE	
+		PUSH	HL
+		PUSH	BC		
+
+		LD	A,#80 		;START TO LISTEN
+		LD	(SC),A
+
+@WAIT
+		LD	A,(SIOFLAG)	;WAIT FOR SIO TO RECEIVE BYTE
+		AND	A
+		JR	Z,@WAIT
+
+		XOR	A			;CLEAR SIO FLAG		
+		LD	(SIOFLAG),A
+
+		LD	A,(INBYTE) 	;GET RECEIVED BYTE IN A
+
+		POP		BC
+		POP		HL
+		RET
+
+****************************************
+*       SEND A BYTE TO THE PC
+*	     A = BYTE
+****************************************  
+
+SEND_ONE:		
+		PUSH	HL
+		PUSH	BC		
+
+		LD	(SB),A		;PUT BYTE TO SEND TO PC IN SB
+
+		LD	A,#80		;SEND IT TO PC
+		LD	(SC),A
+
+@WAIT	LD	A,(SIOFLAG)
+		AND	A
+		JR	Z,@WAIT
+
+		XOR	A
+		LD	(SIOFLAG),A
+
+		POP		BC
+		POP		HL
+		RET
+
+****************************************
+*           SIO INTERRUPT
+****************************************
+
+SIO_INT:
+		DI
+		PUSH	AF
+
+		LD	A,(SB)	   	;BYTE THAT HAS BEEN RECIEVED
+		LD	(INBYTE),A
+
+		LD	A,1	      	;SAY THAT WE HAVE GOT THE BYTE
+		LD	(SIOFLAG),A
+		
+		POP	AF
+		EI
+		RETI
+		RETI
+		RETI

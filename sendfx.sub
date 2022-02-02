@@ -1,0 +1,10 @@
+;***
+		SEND
+
+		exec $
+
+		org	#a000
+		incbin res2.bin
+		
+		
+

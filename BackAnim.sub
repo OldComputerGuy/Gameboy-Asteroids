@@ -1,0 +1,531 @@
+********************************************************************************
+* 			 			Backgroud Enemy Control
+********************************************************************************
+
+		IndexBase TaskBase
+
+****************************************
+*	    Initialize an enemy
+****************************************
+
+SunTab		db	0
+
+InitSuns:
+		ld		a,(ThisZone)
+		cp		3
+		ret		nz
+
+		xor		a
+		ld		(ThisTask),a
+
+		stx		FTime,0
+
+		move	StartSuns
+		jp		AddTask
+
+StartSuns:
+
+		stx		Count,2
+		move	SunWait
+
+SunWait:
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+
+;		call	AllowTask			;dont allow nmes to start
+;		jp		c,StartSuns		;if no space
+
+;;;;
+		call	Random
+		and		127
+		add		a,16
+		stx		XCoordH,a
+		stx		XCoord,0
+
+		call	Random
+		and		63
+		add		a,40
+		stx		YCoordH,a
+		stx		YCoord,0
+
+		stx		Angle,0				;Firing angle
+		stn		YVel,0
+		stn		XVel,0
+
+;------------------------------------
+;
+;------------------------------------
+
+		ld		hl,seq_sunform
+		call	InitSeq
+		stw		h,l,Anim
+
+		stx		Count,4
+		
+		move	DoSun
+
+DoSun:
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+
+		ld		a,(ThisLevel)
+		cp		6
+		jp		c,DoShrink
+
+		cp		11
+		jp		nc,DoNova
+
+;------------------------------------
+;
+;------------------------------------
+
+DoSunFire:
+		ld		de,seq_sunshake
+		ldw		h,l,Anim		
+		call	ChangeSeq
+
+		Move	RunSunF
+
+RunSunF:
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ld		hl,seq_pyroa
+		call	InitEnemyProj
+
+		jp		DoShrink
+
+;------------------------------------
+;
+;------------------------------------
+
+DoNova:
+		ld		de,seq_novawarn
+		ldw		h,l,Anim		
+		call	ChangeSeq
+
+		Move	RunNova
+
+RunNova:
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		jp		EndSun
+
+;------------------------------------
+;
+;------------------------------------
+
+DoShrink:
+
+		ld		de,seq_sunshrink
+		ldw		h,l,Anim		
+		call	ChangeSeq
+
+		Move	SunShrink
+
+SunShrink:
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+;------------------------------------
+;
+;------------------------------------
+
+EndSun:
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+	
+		jp		StartSuns
+
+****************************************
+*	    Initialize an enemy
+****************************************
+
+InitWhirl:
+		ld		a,(CGBFlag)
+		and		a
+		ret		z
+
+		ld		a,(ThisZone)
+		cp		2
+		ret		nz
+
+		xor		a
+		ld		(ThisTask),a
+
+		ld		hl,seq_holemid
+		call	InitSeq
+		stw		h,l,Anim
+
+		move	RunWhirl
+		jp		AddTask
+
+RunWhirl:
+		ld		bc,0
+		ldw		h,l,Anim
+		call	RunSeq
+
+		ret
+
+****************************************
+*	    Initialize ion curtan
+****************************************
+
+		MemW	CurtainTrig
+
+InitCurtain:
+		ld		a,(CGBFlag)
+		and		a
+		ret		z
+
+		ld		a,(ThisZone)
+		cp		5
+		ret		nz
+
+		xor		a
+		ld		(ThisTask),a
+		ld		(CurtainTrig),a
+
+		call	EmptySeq
+		stw		h,l,Anim
+
+		move	WaitCurtain
+		jp		AddTask
+
+WaitCurtain:
+
+		ld		a,(CurtainTrig)
+		and		a
+		ret		z
+
+		ld		de,seq_ioncurtain
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		move	$
+
+		ld		b,11*8
+		ld		c,1*8
+		ldw		h,l,Anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		xor		a
+		ld		(CurtainTrig),a
+
+		move	WaitCurtain		
+		ret
+
+****************************************
+*	    Initialize Cities
+****************************************
+
+		MemB	CityDamage
+
+InitCities:
+		ld		a,(CGBFlag)
+		and		a
+		ret		z
+
+		ld		a,(ThisZone)
+		cp		5
+		ret		nz
+
+		xor		a
+		ld		(ThisTask),a
+
+		xor		a
+		ld		(CityDamage),a
+
+		stx		Count,0
+
+		move	RunCities
+		jp		AddTask
+
+RunCities:
+
+		ld		bc,0
+		ld		hl,seq_city
+		ldx		d,Count
+		call	IndexSeq
+
+		ld		a,(Time)
+		and		3
+		ret		nz
+
+		ldx		c,Count
+		
+		ld		a,(CityDamage)
+		add		a,a
+		add		a,a
+		cp		c
+		ret		z
+		
+		ld		a,c
+		inc		a
+		stx		Count,a
+
+		ret
+
+****************************************
+*			Remove a City
+****************************************
+
+DecCity:
+		ld		a,(CityDamage)
+		inc		a
+		ld		(CityDamage),a
+
+		call	SetCityMsg
+		ret
+
+****************************************
+*	    Initialize an enemy
+****************************************
+
+		MemW	WormPath
+		MemB	WormActive
+
+WormPattern:
+		db	1,4
+		db	2,6
+		db	7,6
+		db	1,6
+		db	2,4
+		db	2,5
+		db	3,5
+		db	5,8
+		db	1,2
+		db	7,4
+		db	3,8
+		db	6,3
+		db	6,5
+		db	4,6
+		db	2,4
+
+InitWorm:
+		ld		a,(ThisZone)
+		cp		4
+		ret		nz
+
+		xor		a
+		ld		(ThisTask),a
+
+		stx		FTime,0
+
+		move	StartWorm
+		jp		AddTask
+
+StartWorm:
+		ldx		a,Ftime
+		and		1
+		ld		c,a
+
+		ld		a,(ThisLevel)
+		add		a,a
+		add		a,c
+		ld		e,a
+		ld		d,0
+		ld		hl,WormPattern
+		add		hl,de
+		ld		a,(hl)
+		dec		a
+		and		7
+		ld		e,a
+		ld		d,0
+		ld		hl,seq_mw1
+		add		hl,de
+
+		stm		WormPath,hl
+
+		stx		Count,8
+
+		move	WormWait
+
+WormWait:
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+
+;		call	AllowTask			;dont allow nmes to start
+;		jp		c,StartWorm			;if no space
+
+		call	PushTask		
+		call	DoWorm
+		call	PopTask
+
+		Move	WaitDone
+
+WaitDone:
+		ld		a,(WormActive)
+		and		a
+		ret		nz
+
+		inx		FTime
+
+		jp		StartWorm
+
+****************************************
+*	    Initialize an enemy
+****************************************
+
+DoWorm:
+
+		xor		a
+		ld		(ThisTask),a
+
+		ld		hl,WormActive
+		inc		(hl)
+
+;-------------------------
+
+		ldm		hl,WormPath
+		call	InitSeq
+		stw		h,l,Anim
+		
+		ld		hl,seq_mwhead1
+		stw		h,l,SeqOvl
+
+		stx		Count,0
+		stx		FTime,0
+
+		move	RunWorm
+		call	AddTask
+
+;------------------
+
+		ldm		hl,WormPath
+		call	InitSeq
+		stw		h,l,Anim
+		
+		ld		hl,seq_mwseg1
+		stw		h,l,SeqOvl
+
+		stx		Count,7
+		stx		FTime,0
+
+		move	RunWorm
+		call	AddTask
+
+;------------------
+
+		ldm		hl,WormPath
+		call	InitSeq
+		stw		h,l,Anim
+		
+		ld		hl,seq_mwseg1
+		stw		h,l,SeqOvl
+
+		stx		Count,14
+		stx		FTime,0
+
+		move	RunWorm
+		call	AddTask
+
+;------------------
+
+		ldm		hl,WormPath
+		call	InitSeq
+		stw		h,l,Anim
+		
+		ld		hl,seq_mwtail1
+		stw		h,l,SeqOvl
+
+		stx		Count,21
+		stx		FTime,0
+
+		move	RunWorm
+		call	AddTask
+
+		ret
+		
+RunWorm:
+		ld		a,1
+		ld		(WormActive),a
+
+		call	DecCounter
+		ret		nz
+
+		ld		bc,0
+		ldw		h,l,Anim
+		call	RunSeqNoDisp
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		jr		z,@kill
+
+		ldm		hl,Seq_AnimL
+		ld		de,-SPR_mwhead
+		add		hl,de
+		ld		d,l					;Get the index in d
+
+		ldw		h,l,SeqOvl
+		ldm		bc,Seq_LX
+		ldx		e,FTime				;Dual Anim
+
+		call	DualIndexSeq
+
+		ld		a,(Time)
+		and		1
+		ret		nz
+
+		ldx		a,FTime
+		inc		a
+		stx		FTime,a
+
+		cp		3
+		ret		nz
+
+		stx		FTime,0
+		ret
+
+@kill:
+		ld		hl,WormActive
+		dec		(hl)
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		killTask
+		ret

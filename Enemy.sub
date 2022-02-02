@@ -1,0 +1,1974 @@
+********************************************************************************
+* 			 			Enemy Control
+********************************************************************************
+
+		IndexBase TaskBase
+
+		MemB	EnemyOn
+
+****************************************
+*
+****************************************
+
+EnemyTable:
+		dw		InitCryShip	;14 Crystal Ship		;do this
+		dw		InitFTrans	;15 Fuel Transport
+		dw		InitHex		;16 Hex Ship
+		dw		InitKamik	;17 Kamikaze
+		dw		InitTurret	;18 Living Turret
+		dw		InitCryBomb	;InitMorph	;19 Morphiod
+		dw		InitTug		;20 Astriod Tug
+		dw		InitNuke	;21 Nuke Drivers
+		dw		InitRegen	;22 Regenerator
+		dw		InitSaucer	;23 Saucer
+		dw		InitRepul	;24 Repulsor ship
+		dw		0			;25 Baby Worms
+		dw		InitSSaucer	;26 Super saucer
+		dw		InitCryBomb	;27 Crystal bomber
+
+SC_FuelTrans	equ	5
+SC_Hex			equ	1
+SC_MiniHex		equ	1
+SC_Kami			equ	7
+SC_Turret		equ	5
+SC_Morph		equ	7
+SC_Regen		equ	10
+SC_Tug			equ	5
+SC_Nuke			equ	5
+SC_Saucer		equ	2
+SC_Super		equ	7
+SC_Rep			equ	7
+SC_Bomber		equ	7
+SC_CryShip		equ	5
+
+****************************************
+*	    Initialize an enemy
+****************************************
+
+TestEnemy:
+		ld		a,(ThisEnemy)
+		and		31
+		ret		z
+		
+		ld		(IType),a
+
+		xor		a
+		ld		(ThisEnemy),a
+
+		ld		a,6					;regen count
+		ld		(IData2),a
+
+		ld		a,3
+		ld		(IRegen),a
+		
+		ld		a,#0f
+		ld		(IRegion),a
+
+
+InitEnemy:
+		ld		a,(IType)
+		stx		Type,a			;Save the type
+
+		cp		23
+		jr		nz,@nope
+
+		ld		a,(IData1)
+		cp		2
+		jr		nz,@nope
+	
+		stx		Type,26			;Save the type
+
+@nope:		
+
+;Test data 1 for super saucer		
+
+		ld		a,(IData2)
+		stx		RegenCount,a
+
+		ld		a,(IRegen)
+		stx		RegenTime,a
+
+		ld		a,(IRegion)
+		stx		EnemyRegion,a
+
+		xor		a
+		ld		(ThisTask),a
+
+		stx		FTime,0
+
+		move	EnemyStart
+		jp		AddTask
+
+EnemyStart:
+		ldx		a,RegenTime
+		stx		Count,a
+
+		move	EnemyWait
+
+EnemyWait:
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+
+StartEnemy:
+
+		ld		a,(EnemyOn)
+		and		a
+		jr		nz,EnemyStart
+
+		ld		a,1
+		ld		(EnemyOn),a
+
+		call	AllowTask			;dont allow nmes to start
+		jp		c,EnemyStart		;if no space
+
+		ldx		a,EnemyRegion
+		call	SetRegion
+
+		ld		a,(ThisTask)		;make sure the parent
+		stx		Parent,a			;is setup correctly
+
+		ld		a,(RegDirX)
+		ld		h,a
+		ld		l,0
+		stw		h,l,XVel
+
+		ld		a,(RegDirY)
+		ld		h,a
+		ld		l,0
+		stw		h,l,YVel
+
+		ldx		a,Type
+		sub		14			;start of type table
+;		cp		26-14
+;		jp		nc,KillEnemy
+
+		add		a,a
+		ld		l,a
+		ld		h,0
+		ld		bc,EnemyTable
+		add		hl,bc
+		
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+		
+		or		h
+		jr		z,KillEnemy
+		
+		jp		(hl)
+
+Enemy_Done:
+
+		xor		a
+		ld		(EnemyOn),a
+
+;		ldw		h,l,Anim			;Delete the seq
+;		call	KillSeq
+
+		ldx		a,RegenCount
+		dec		a
+		stx		RegenCount,a
+		
+		and		a
+		jp		nz,EnemyStart
+
+KillEnemy:
+		KillTask
+		ret
+		
+****************************************
+*			Standard Saucer
+****************************************
+
+InitSaucer:
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,-255
+		
+		call	Random
+		and		1
+		jr		nz,@left
+		
+		stn		XVel,255
+@left:
+		ld		hl,seq_sauc1
+;		ld		hl,seq_sauc2		
+		
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		stx		Count,32
+		move	RunSauser
+
+RunSauser:
+		Inx		FTime
+	
+		call	AddVels
+		call	GetShipXY
+		
+;doms pseudo code
+
+		ld		e,4					;
+		call	GoAngle				;Swing turret round
+
+		ldx		a,FTime
+		and		63
+		call	z,InitEnemyBul		
+		
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	LogNME				;Log this as a nme
+
+		ldx		a,FTime				;only home 1 sec
+		and		31
+		call	z,HomeY
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+		
+;please check the explosion art
+
+		AScore	RockBul+1,SC_SAUCER
+
+		ld		hl,seq_midbang
+		call	CallSeq
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+
+		jp		Enemy_Done
+		
+****************************************
+*
+****************************************
+
+HomeY:
+
+		stn		YVel,0
+
+		ld		a,(ShipY)
+		ld		c,a
+
+		ldx		a,YCoordH
+		cp		c
+		ret		z
+		jr		nc,@gr
+
+		stn		YVel,128
+		ret
+@gr:
+		stn		YVel,-128
+		ret
+
+****************************************
+*			 Super Saucer
+****************************************
+
+InitSSaucer:
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,-255
+		
+		call	Random
+		and		1
+		jr		nz,@left
+		
+		stn		XVel,255
+@left:
+
+		ld		hl,seq_sauc2		
+		call	InitSeq
+		stw		h,l,Anim			;Use anim as seq handle
+
+		stx		Count,2
+
+SSStart:
+		move	RunSSauser
+
+RunSSauser:
+
+		Inx		FTime
+	
+		call	AddVels
+		call	GetShipXY
+		
+;doms pseudo code
+
+		ld		e,4					;
+		call	GoAngle				;Swing turret round
+
+		ldx		a,FTime
+		and		31
+		call	z,InitEnemyBul		
+		
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	LogNME				;Log this as a nme
+
+		ldx		a,FTime				;only home 1 sec
+		and		31
+		call	z,HomeY
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+		
+		call	DecCounter
+		jp		z,KillSS
+
+		ld		de,seq_sauc2wobble	;should wobble
+		ldw		h,l,Anim			;Seq handle in anim
+		call	ChangeSeq
+
+		stx		FTime,0
+		
+		move	RunSSwob
+		ret
+
+RunSSwob:
+
+		Inx		FTime
+	
+		ldx		a,FTime
+		cp		30
+		jp		nc,SSStart
+	
+		call	AddVels
+		call	GetShipXY
+		
+		ld		e,4					;
+		call	GoAngle				;Swing turret round
+		
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	LogNME				;Log this as a nme
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+		
+		call	DecCounter
+		jp		z,KillSS
+		
+		ret
+
+
+KillSS:
+		AScore	RockBul+1,SC_SUPER
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			 Asteroid tug
+****************************************
+
+InitTug:
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,0
+
+		stx		Count,5
+		stx		DispOn,0
+		
+		call	TugRing
+
+		move	RunTug
+		ret
+
+RunTug:
+		ldx		a,DispOn
+		and		a
+		jr		z,@nodisp
+	
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_tugship			;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+@nodisp:
+		call	GetShipXY
+
+		ld		de,#2010
+		
+		ld		a,(Time)
+		and		31
+		jr		nz,@ok
+		
+;		call	GoAngleDir			;Swing turret round
+
+		call	OppAngleDir
+		stx		DispOn,1
+
+@ok:
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		call	DecCounter
+		ret		nz
+
+		stx		Parent,-1
+
+		AScore	RockBul+1,SC_TUG
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*		  Tug Ring
+****************************************
+
+TugRing:
+		call	PushTask
+
+		ld		a,(ThisTask)
+		stx		Parent,a
+
+		stx		DispOn,0
+
+		stx		Count,25
+
+		ld		hl,seq_ringrk
+		call	InitSeq
+		stw		h,l,Anim
+
+		move	RunTugRing
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunTugRing:
+		call	LogNMErock		;Log this as a nme
+
+		call	DecCounter
+		ret		nz
+
+		ldx		a,DispOn
+		and		a
+		jr		z,@nodisp
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq num
+		call	RunSeq
+
+@nodisp:
+
+		call	ParentState
+		cp		-1
+		jr		z,@Die
+
+		call	GetParentXY
+		ld		c,a
+		ld		b,#20
+
+		ld		a,(Time)
+		and		31
+		cp		20				;15
+		jr		nz,@nope
+
+		call	SetScaleDir
+		stx		DispOn,1
+@nope:
+
+		ld		hl,RockBul
+		call	IfHit
+		ret
+
+@Die:
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		call	PushTask
+
+		stx		Type,10			;Save the type
+
+		ldx		a,XCoordH			;Coords in de
+		ld		(XPos),a
+
+		ldx		a,YCoordH
+		ld		(YPos),a
+
+		ld		a,1
+		ld		(ASize),a
+
+		call	New_Asteriod
+
+		call	PopTask
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+*			  Hex ship
+****************************************
+
+InitHex:
+
+		stx		Angle,0				;Firing angle
+
+		stn		YVel,0
+		stn		XVel,0
+
+		ld		hl,seq_hex
+		call	InitSeq
+		stw		h,l,Anim
+
+		stx		Count,4
+		
+		move	RunHex
+
+RunHex:
+		inx		FTime
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		CALL	RunSeq
+
+		call	GetShipXY
+
+		ldx		a,Count
+		cp		2
+		call	nc,GetRandXY
+		
+		ld		de,#3020
+
+		ldx		a,FTime
+		and		7
+		call	z,GoAngleDir			;Swing turret round
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		call	DecCounter
+		ret		nz
+
+		AScore	RockBul+1,SC_Hex
+
+		call	MiniHex
+		call	MiniHex
+		call	MiniHex
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			  Mini Hex
+****************************************
+
+MiniHex:
+		call	PushTask
+
+		call	Random		
+		stx		Angle,a			;Firing angle
+
+;doms code to make move straight away and scatter		
+		ld		bc,0
+		ld		de,#4000		;forward no rotation
+		call	GoAngleDir	
+
+;old code		
+;		stn		YVel,0
+;		stn		XVel,0
+
+		move	RunMiniHex
+		call	AddTask
+
+		jp		PopTask
+
+RunMiniHex:
+		inx		FTime
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_hextri		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+		call	GetShipXY
+
+		ld		de,#3015			;#3010 slower rotation speed
+
+		ld		a,(time)
+		and		7
+		call	z,GoAngleDir		;Swing turret round
+
+		call	Random
+		ld		c,a
+		
+		ldx		a,FTime
+		add		a,c
+		
+		and		63
+		call	z,InitEnemyBul
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_MiniHex
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+;;		jp		Enemy_Done
+
+****************************************
+*			 Nuke Driver
+****************************************
+
+InitNuke:
+		stx		Angle,0			;Firing angle
+		stx		Count,4
+		stx		FTime,0
+		
+		move	RunNuke
+
+RunNuke:
+		inx		FTime
+
+		ldx		a,FTime
+		cp		30
+		jr		nc,@DoNuke2
+		
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_nuke		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		rra
+		and		#07
+		ld		d,a					;get the index
+		CALL	IndexSeq
+
+		call	GetShipXY
+		ld		de,#1010
+
+		ldx		a,FTime
+		and		7
+		call	z,GoAngleDir			;Swing turret round
+
+		ldx		a,Angle
+		and		%11100000
+		ld		c,a
+
+		ld		b,#10
+		call	SetScaleDir
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		ld		b,30
+		ld		c,60
+		call	InitEnemyBulAdj
+
+		call	DecCounter
+		jp		z,NukeDie
+
+@DoNuke2:
+
+		stx		FTime,128
+		move	RunNuke2
+		
+RunNuke2:
+
+		inx		FTime
+
+		ldx		a,FTime
+		and		a
+		call	z,NukeVent
+		
+		call	AddVelsOff
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_nuke		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		rra
+		and		#07
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+		call	OffScreen
+		jp		c,Enemy_Done
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		ld		hl,seq_nmebul
+		call	InitEnemyProj
+
+
+		call	DecCounter
+		ret		nz
+
+
+NukeDie:
+		AScore	RockBul+1,SC_NUKE
+
+		ld		hl,seq_nukerad		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*		 Vent out nuke fumes
+****************************************
+
+NukeVent:
+		call	PushTask
+
+		ld		a,(ThisTask)
+		stx		Parent,a
+
+		stx		Count,25
+		stx		FTime,0
+
+		move	RunVent
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunVent:
+		inx		FTime
+
+		call	GetParentXY
+		jr		c,VentDie
+
+		stx		Angle,a
+		
+		ld		hl,seq_nukex1		;Seq num
+
+		ldx		a,FTime
+		srl		a
+		srl		a
+		ld		e,a
+
+		cp		5					;Last frame
+		jr		nc,@next
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		rra
+		and		#07
+		ld		d,a					;get the index
+
+		ld		a,e
+
+		CALL	DualIndexSeq
+
+		ld		a,(Seq_LX)
+		stx		XCoordH,a
+
+		ld		a,(Seq_LY)		
+		stx		YCoordH,a	
+		ret
+
+@next:
+		
+;----------------------------------------
+;		 Nuke pollute sequence
+;----------------------------------------
+
+		ld		hl,seq_nukexcycle
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		MOVE	Pollute
+
+Pollute:
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim		;Seq num
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+VentDie:
+		KillTask
+		ret
+
+****************************************
+*			  Morphoid
+****************************************
+
+;needs to come on screen, wait then attack you
+
+InitMorph:
+
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,0
+
+		move	RunMorph
+
+RunMorph:
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_morph1a			;Seq num
+
+;if speeds=0 turn in to flat ship
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+		call	GetShipXY
+
+		ld		de,#3010
+
+		ld		a,(time)
+		and		7
+		call	z,GoAngleDir			;Swing turret round
+
+;		call	Random
+;		and		63
+;		call	z,InitEnemyBul
+
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Morph
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			  Kamikaze
+****************************************
+
+InitKamik:
+
+;---------------------------------------
+;		Make Kami Point at Player
+;---------------------------------------
+		
+		call	GetShipXY
+		call	GetAngle
+		stx		Angle,a			;Firing angle
+
+		ld		c,a
+		ld		b,#10
+		call	SetScaleDir
+
+;---------------------------------------
+;		Thrust on for a moment
+;---------------------------------------
+
+		stx		Count,32	
+
+		move 	$
+
+		call	AddVels
+
+		call	GetShipXY
+		call	GetAngle
+		stx		Angle,a			;Firing angle
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+
+		ld		hl,seq_kami1		;seq_p2			;Seq num
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		rra
+		and		#07
+		ld		d,a					;get the index
+
+		ld		a,(Time)
+		and		1
+		ld		e,a
+		call	DualIndexSeq
+
+		call	Drag
+
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,KamiDie
+
+		call	DecCounter
+		ret		nz
+
+;---------------------------------------
+;		 Kami Power up and shake
+;---------------------------------------
+
+		stx		Count,30				;30
+
+		move	$
+
+		ldx		a,Count
+		and		1
+		ld		b,a
+		ldx		a,YCoordH			;Coords in bc
+		add		a,b
+		ld		b,a
+
+		ldx		a,Count
+		and		2
+		rrca
+		ld		c,a
+		ldx		a,XCoordH			;Coords in bc
+		add		a,c
+		ld		c,a
+
+		ld		hl,seq_kami1		;seq_p2			;Seq num
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		rra
+		and		#07
+		ld		d,a					;get the index
+
+		ld		a,(Time)
+		and		1
+		ld		e,a
+		call	DualIndexSeq
+
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,KamiDie
+
+		call	DecCounter
+		ret		nz
+
+;---------------------------------------
+;		Make Kami attack
+;---------------------------------------
+
+		ldx		a,Angle			;load up velocity
+		ld		c,a
+		ld		b,#c0
+		call	SetScaleDir
+
+		stx		Count,60	
+
+		move 	$
+
+;		call	AddVels
+		call	AddVelsOff
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+
+		ld		hl,seq_kami1		;seq_p2			;Seq num
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		rra
+		and		#07
+		ld		d,a					;get the index
+
+		;ld		a,(Time)
+		;and		1
+		;ld		e,a
+		;call	DualIndexSeq
+
+		call	IndexSeq
+
+		ldx		a,Count
+		cp		30
+		call	nc,Drag
+
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,KamiDie
+
+		call	DecCounter
+		ret		nz
+		
+;		jp		InitKamik
+		jp		Enemy_Done
+
+KamiDie:
+
+		AScore	RockBul+1,SC_Kami
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			 Crystal ship
+****************************************
+
+InitCryShip:
+		call	Random
+		stx		Angle,a			;Firing angle
+
+		stx		Count,0
+		stx		FTime,0
+
+		ldx		c,Angle
+		ld		a,#20
+		ld		b,a
+		call	SetScaleDir
+
+		move	RunCysh
+
+RunCysh:
+		inx		FTime
+		
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_cryship1		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		ldx		a,FTime
+		and		3
+		ld		e,a
+
+		CALL	DualIndexSeq
+
+		call	GetShipXY
+		
+		ldx		a,FTime
+		and		16
+		jr		z,@notrand		
+
+		call	GetRandXY
+
+@notrand:
+		ld		de,#2018
+
+		ldx		a,FTime
+		and		31
+		call	z,GoAngleDir			;Swing turret round
+
+		ldx		a,Ftime
+		and		32+15
+		call	z,InitCrysBul
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_CryShip
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			 Fuel Transport
+****************************************
+
+InitFTrans:
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,0
+		stx		DispOn,0
+
+		call	FuelBody1
+		call	FuelBody2
+
+		move	RunTrans
+		ret
+
+RunTrans:
+		ldx		a,DispOn
+		and		a
+		jr		z,@nodisp
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_fthead		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+@nodisp:
+		call	GetShipXY
+
+		ld		de,#2010
+		
+		ld		a,(Time)
+		and		31
+		jr		nz,@noang
+		
+		call	GoAngleDir			;Swing turret round
+		stx		DispOn,1
+
+@noang:
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		stx		Parent,-1			;say i'm dying
+
+		AScore	RockBul+1,SC_FuelTrans
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*		  Fuel Trans Body
+****************************************
+
+FuelBody1:
+		call	PushTask
+
+		ld		a,(ThisTask)
+		stx		Parent,a
+
+		stx		Count,25
+
+		move	RunFuelBody1
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunFuelBody1:
+		call	DecCounter
+		ret		nz
+
+		ldx		a,DispOn
+		and		a
+		jr		z,@nodisp
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_ftseg		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+@nodisp:
+		call	ParentState
+		cp		-1
+		jr		z,@Die
+
+		call	GetParentXY
+		ret		c
+
+		ld		c,a
+		ld		b,#20
+
+		ld		a,(Time)
+		and		31
+		cp		15
+		ret		nz
+
+		call	SetScaleDir
+
+		stx		DispOn,1
+		ret
+
+
+@Die:	ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+*		  Fuel Trans Body
+****************************************
+
+FuelBody2:
+		call	PushTask
+
+		ld		a,(ThisTask)
+		stx		Parent,a
+
+		stx		Count,50
+
+		move	RunFuelBody2
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunFuelBody2:
+		call	DecCounter
+		ret		nz
+
+		ldx		a,DispOn
+		and		a
+		jr		z,@nodisp
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_ftseg		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+@nodisp:
+
+		call	ParentState
+		cp		-1
+		jr		z,@Die
+
+		call	GetParentXY
+		ret		c
+
+		ld		c,a
+		ld		b,#20
+			
+		ld		a,(Time)
+		and		31
+		cp		30
+		ret		nz
+
+		call	SetScaleDir
+
+		stx		DispOn,1
+		ret
+
+@Die:
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		KillTask
+		ret
+
+****************************************
+*			  Regenorator
+****************************************
+
+InitRegen:
+
+
+		call	EmptySeq
+		stw		h,l,Anim
+
+;---------------------------------------
+;		3 Point regenorator
+;---------------------------------------
+
+Regen3:
+		
+		call	GetRandXY
+		call	GetAngle
+
+		ld		c,a
+		ld		b,#50
+		call	SetScaleDir
+
+		ld		de,seq_regn3
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		stx		Count,80	
+
+		move 	$
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		call	Drag
+
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,Regen2
+
+		call	DecCounter
+		ret		nz
+
+		jp		Regen3
+
+
+;---------------------------------------
+;		3 Point regenorator
+;---------------------------------------
+
+Regen2:
+		
+		call	GetRandXY
+		call	GetAngle
+
+		ld		c,a
+		ld		b,#50
+		call	SetScaleDir
+
+		ld		de,seq_regn2
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		stx		Count,80	
+
+		move 	$
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		call	Drag
+
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,Regen1
+
+		call	DecCounter
+		ret		nz
+
+		jp		Regen3
+
+;---------------------------------------
+;		3 Point regenorator
+;---------------------------------------
+
+Regen1:
+		
+		call	GetRandXY
+		call	GetAngle
+
+		ld		c,a
+		ld		b,#50
+		call	SetScaleDir
+
+		ld		de,seq_regn1
+		ldw		h,l,Anim
+		call	ChangeSeq
+
+		stx		Count,80	
+
+		move 	$
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		call	RunSeq
+
+		call	Drag
+
+		ld		hl,RockBul
+		call	IfHit
+		jp		c,RegenDie
+
+		call	DecCounter
+		ret		nz
+
+		jp		Regen2
+
+;---------------------------------------
+;		regenorator killed
+;---------------------------------------
+
+RegenDie:
+
+		AScore	RockBul+1,SC_Regen
+
+		ldw		h,l,Anim
+		call	KillSeq
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			 Living Turret
+****************************************
+
+;seq_livt EQU 2671		;2845
+;seq_livtpain EQU 2672	;2874
+;seq_livtshoot EQU 2673	;2904
+;seq_livtbul EQU 2674	;2933
+
+InitTurret:
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,0
+		stx		Count,3
+
+TurretStart:
+
+		stx		FTime,0
+		move	RunTurret
+
+RunTurret:
+		inx		FTime
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_livt			;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+		call	GetShipXY
+
+		ld		de,#1002
+
+		call	GoAngleDir			;Swing turret round
+
+		ld		hl,seq_livtbul
+
+		ldx		a,FTime
+		and		127
+		call	z,InitEnemyProj
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		call	DecCounter
+		jp		z,TurretDie
+
+Turret2:
+		stx		FTime,0
+		move	RunTurret2
+		ret
+
+RunTurret2:
+		inx		FTime
+
+		ldx		a,FTime
+		cp		30
+		jr		nc,TurretStart
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_livtpain		;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		CALL	IndexSeq
+
+		call	GetShipXY
+
+		ld		de,#1002
+
+		call	GoAngleDir			;Swing turret round
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		call	DecCounter
+		ret		nz
+
+TurretDie:
+		AScore	RockBul+1,SC_Turret
+
+		ld		hl,seq_midbang		;seq_deadexp
+		call	CallSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			 Repulsor
+****************************************
+
+InitRepul:
+		stx		Angle,0			;Firing angle
+
+		stn		YVel,0
+		stn		XVel,0
+
+		move	RunRepul
+
+RunRepul:
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_rbeam1			;repul			;Seq num
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		ldx		e,FTime
+
+		CALL	DualIndexSeq
+
+		call	GetShipXY
+
+		ld		de,#1002
+		call	GoAngleDir			;Swing turret round
+
+		ld		a,(Time)
+		and		7
+		jr		nz,@noanim
+
+		ldx		a,FTime
+		inc		a
+
+		cp		3
+		jr		nz,@ok
+
+		xor		a
+		
+@ok:
+		stx		FTime,a
+
+@noanim:
+		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Rep
+
+		ld		hl,seq_midbang
+		call	CallSeq
+
+		jp		Enemy_Done
+
+
+****************************************
+*		  Crystal bomber
+****************************************
+
+InitCryBomb:
+		stx		Angle,0			;Firing angle
+
+		stx		YCoordH,16
+
+		stn		YVel,0
+		stn		XVel,-255
+		stx		XCoordH,160
+		
+		call	Random
+		and		1
+		jr		nz,@left
+		
+		stn		XVel,255
+		stx		XCoordH,0
+
+@left:
+
+		ld		hl,seq_crybomber	
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		stx		Count,32
+		move	RunBomber
+
+RunBomber:
+
+		Inx		FTime
+	
+		call	AddVelsOff
+		
+		ldx		a,FTime
+		ld		c,a
+				
+		call	Random
+		add		a,c
+		and		31
+		call	z,InitCBomb		
+		
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	LogNME				;Log this as a nme
+
+		call	OffScreen
+		jp		c,@done
+
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+
+		AScore	RockBul+1,SC_Bomber
+
+		ld		hl,seq_midbang
+		call	CallSeq
+
+@done:
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		jp		Enemy_Done
+
+****************************************
+*			 Enemy Bullets
+****************************************
+
+InitCBomb:
+
+		call	PushTask
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ld		c,128
+		ld		b,#20
+		call	SetScaleDir
+
+		ld		a,120
+		stx		Count,a
+
+		ld		hl,seq_crybomb
+		call	InitSeq
+		stw		h,l,Anim
+
+		Move	RunCBomb		
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunCBomb:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+		CALL	RunSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1		;wrong !!
+		call	IfHit
+		ret		nc
+
+@Quit:
+		ldw		h,l,Anim
+		CALL	KillSeq
+
+		KillTask
+		ret
+
+****************************************
+*			 Enemy Bullets
+****************************************
+
+InitEnemyBul:
+		ld		b,#60
+		ld		c,30
+
+InitEnemyBulAdj:
+
+		push	bc
+		call	PushTask
+		pop		bc
+		
+		xor		a
+		ld		(ThisTask),a
+
+		ld		a,c
+		stx		Count,a
+		
+		ldx		c,Angle
+		call	AddScaleDir
+
+		Move	RunEnemyBul		
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunEnemyBul:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_nmebul		;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1		;wrong !!
+		call	IfHit
+		ret		nc
+
+@quit:
+		KillTask
+		ret
+
+****************************************
+*			 Enemy Bullets
+****************************************
+
+InitCrysBul:
+
+		call	PushTask
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ldx		c,Angle
+
+		ld		a,#40
+		ld		b,a
+		call	AddScaleDir
+
+		ld		a,30
+		stx		Count,a
+
+		Move	RunCrysBul		
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunCrysBul:
+
+		call	AddVels
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		rra
+		and		#0f
+		ld		d,a					;get the index
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_crybul		;Seq num
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1		;wrong !!
+		call	IfHit
+		ret		nc
+
+@Quit:
+		KillTask
+		ret
+
+****************************************
+*	 	 Enemy Projectile
+****************************************
+
+InitEnemyProj:
+
+		push	hl
+		
+		call	PushTask
+
+		pop		hl
+		stw		h,l,Anim
+		
+		xor		a
+		ld		(ThisTask),a
+		
+		call	GetShipXY
+
+		ld		d,#60
+		call	SetAngleDir			;Swing turret round
+
+		ld		a,30
+		stx		Count,a
+
+		Move	RunEnemyProj		
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunEnemyProj:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ldw		h,l,Anim
+
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1		;wrong !!
+		call	IfHit
+		ret		nc
+
+@Quit:
+		KillTask
+		ret
+
+

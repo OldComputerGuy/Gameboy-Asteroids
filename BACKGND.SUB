@@ -1,0 +1,746 @@
+********************************************************************************
+*		          BACKGROUND SPRITE SUBROUTINES
+* 		     (C) COPYRIGHT A.R.HARTLEY 1999
+********************************************************************************
+
+****************************************
+*		  Find start char
+*			 b = base
+*out:		hl = vram pos
+****************************************
+
+StartChar:
+		ld	a,b				;B = start char
+		cp	#80
+		jr	nc,@bank2
+
+		or	#80
+		ld	l,a
+		ld	h,#08			;HL is proloaded with #0880
+		
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ret
+
+@bank2:
+		and	#7f
+		or	#80
+		ld	l,a
+		ld	h,#08			;HL is proloaded with #0800
+		
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ret
+
+****************************************
+*      LOAD BACKGROUND CHARS
+*
+*	  HL = BACKGROUND NUMBER
+****************************************
+
+Load_BakGnd:
+		
+		stm	LastBakRes,hl	;Save the resouce
+		
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_bak	;is this the correct type
+		jp	nz,retbank1	;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld	a,(hli)			;Get Start char
+		and	a				;make sure its the start resource
+		jp	nz,retbank1
+
+		ld	b,a
+	
+		inc	hl				;Skip offset x
+		inc	hl				;Skip offset y
+
+		inc	hl				;Skip x size
+		inc	hl				;Skip y size
+
+		ld	a,(hli)			;get char size
+		ld	c,a				;put amount of chars in r0
+
+		and	a
+		jp	z,Load_Next
+
+		ld	e,l				;Char ptr in de now
+		ld	d,h
+
+		call StartChar
+
+@charloop:
+
+		ld	a,b
+		rlca
+		and	1
+		ldz	(VBK),a
+
+		do		8			;Copy a char to the charbank
+
+		WaitVideo
+
+		ld	a,(de)	
+		ld	(hli),a
+		inc	de
+
+		ld	a,(de)
+		ld	(hli),a
+		inc	de
+
+		loop
+
+		ld	a,h				;make vram loop
+		cp	#90
+		jr	nz,@nosw
+
+		ld	h,#88
+
+@nosw:
+		inc	b
+		dec	c
+		jp	nz,@charloop
+
+;---------------------------------------
+;		!!! Fall Through !!!
+; 	   Load next char resource
+;---------------------------------------
+
+Load_Next:
+		
+		ldm	hl,LastBakRes	;get the resouce
+		inc	hl				;move to the next
+		stm	LastBakRes,hl	;Save the resouce
+		
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_bak	;is this the correct type
+		jp	nz,retbank1	;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld	a,(hli)			;Get Start char
+		and	a				;make sure its the not the start resource
+		jp	z,retbank1		;return if set starts again
+
+		ld	b,a				;b = start chr
+	
+		inc	hl				;Skip offset x
+		inc	hl				;Skip offset y
+
+		inc	hl				;Skip x size
+		inc	hl				;Skip y size
+
+		ld	a,(hli)			;get char size
+		ld	c,a				;put amount of chars in r0
+
+		and	a
+		jp	z,Load_Next
+
+		ld	e,l				;Char ptr in de now
+		ld	d,h
+
+		call StartChar
+
+@charloop:
+
+		ld	a,b
+		rlca
+		and	1
+		ldz	(VBK),a
+
+		do		8			;Copy a char to the charbank
+
+		WaitVideo
+
+		ld	a,(de)	
+		ld	(hli),a
+		inc	de
+
+		ld	a,(de)
+		ld	(hli),a
+		inc	de
+
+		loop
+
+		ld	a,h				;make vram loop
+		cp	#90
+		jr	nz,@nosw
+
+		ld	h,#88
+
+@nosw:
+
+		inc	b
+		dec	c
+		jp	nz,@charloop
+
+		jp	Load_Next
+
+retbank1:
+		ret1
+		
+****************************************
+*	 Get the start char of a font
+*
+*	   HL = BACKGROUND NUMBER
+****************************************
+
+GetFontStart:
+		
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_bak	;is this the correct type
+		jr	nz,@zero		;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld	a,(hli)			;Get Start char
+		dec	a
+		ret1
+@zero:
+		xor	a
+		ret1
+
+****************************************
+*     Get mapped chars
+*
+*	  HL = Background Resource
+* 	  BC = Char
+****************************************
+		
+GetMappedChar:
+
+	 	ld		a,ResBank		;Bank set to resource ptrs
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GBC_bak	;is this the correct type
+		jp		nz,retbank1	;return if not
+
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		inc		hl				;Skip start char
+		inc		hl				;skip x offset
+		inc		hl				;skip y offset
+		inc		hl				;skip x size		
+		inc		hl				;skip y size
+
+;---------------------------------------
+;		 Skip char resource
+;---------------------------------------
+
+		ld		a,(hli)			;Get char size
+
+		push	hl
+		
+		ld		l,a				;find charsize * 16
+		ld		h,0
+		add		hl,hl
+		add		hl,hl
+		add		hl,hl
+		add		hl,hl
+		
+		ld		e,l
+		ld		d,h
+		
+		pop		hl
+
+		add		hl,de			;skip over the char resource to the map
+		ld		e,l				;the MapPtr is no in de
+		ld		d,h
+
+		sla		c				;char index *2
+		rl		b
+		add		hl,bc			;add in index
+
+		ld		a,(hli)
+		ld		d,(hl)
+		ld		e,a				;pal
+		ret1
+
+****************************************
+*		 Get BackScreen pos
+****************************************
+
+BakScrPos:
+		ld		l,b				;b & c are already masked to 31 max
+		ld		h,0
+		add		hl,hl			;hl * 20 * 2 (64 byte per line in ScrBuf)
+		add		hl,hl
+		add		hl,hl			;hl x 8 = in de
+		ld		e,l
+		ld		d,h				;de = hl * 8
+		
+		add		hl,hl
+		add		hl,hl
+		add		hl,de			;hl * 40 = hl * 8 * 4 + de
+		
+		ld		b,>ScrBuf
+		sla		c
+		add		hl,bc
+		ret
+
+****************************************
+*		 Get CopyScreen pos
+****************************************
+
+CopyScrPos:
+		ld		l,b				;b & c are already masked to 31 max
+		ld		h,0
+		add		hl,hl			;hl * 20 * 2 (64 byte per line in ScrBuf)
+		add		hl,hl
+		add		hl,hl			;hl x 8 = in de
+		ld		e,l
+		ld		d,h				;de = hl * 8
+		
+		add		hl,hl
+		add		hl,hl
+		add		hl,de			;hl * 40 = hl * 8 * 4 + de
+		
+		ld		b,>CopyBuf
+		sla		c
+		add		hl,bc
+		ret
+
+****************************************
+*     Display background chars
+*
+*	  HL = BACKGROUND NUMBER
+* 	  BC = Coords
+****************************************
+
+Disp_BakGnd:
+		ld	bc,#0000
+		
+Disp_BakGnd_Spr:
+
+;---------------------------------------
+; 	      Find resource
+;---------------------------------------
+
+	 	ld		a,ResBank		;Bank set to resource ptrs
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+
+TestBakSpr:
+
+		cp		Type_GBC_bak	;is this the correct type
+		jp		nz,DataHandler
+
+		ld		a,2
+		ld		(DirtyBak),a	;Update background
+
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		inc		hl				;Skip start char
+
+;---------------------------------------
+; 	     Add Offsets
+;---------------------------------------
+
+		ld		a,c				;add x offset
+		sub		(hl)
+		ld		c,a
+		inc		hl
+
+		ld		a,b				;add y offset
+		sub		(hl)
+		ld		b,a
+		inc		hl
+
+		srl		c				;Make coords into char coords
+		srl		c				;and mask out top 3 bits of b & c
+		srl		c
+		
+		srl		b
+		srl		b
+		srl		b
+
+		ld		a,(hli)			;get x size in r0
+		and		a
+		jp		z,retbank1		;test for 0 size
+
+		ldz		(r0),a
+		
+		ld		a,(hli)			;get y sise in r1
+		ldz		(r1),a
+
+;---------------------------------------
+;		 Skip char resource
+;---------------------------------------
+
+		ld		a,(hli)			;Get char size
+
+		push	hl
+		
+		ld		l,a				;find charsize * 16
+		ld		h,0
+		add		hl,hl
+		add		hl,hl
+		add		hl,hl
+		add		hl,hl
+		
+		ld		e,l
+		ld		d,h
+		
+		pop		hl
+
+		add		hl,de			;skip over the char resource to the map
+		ld		e,l				;the MapPtr is no in de
+		ld		d,h
+
+
+;---------------------------------------
+;		Find Char Pos
+;---------------------------------------
+
+		push	de				;Save map pointer
+
+		ld		l,b				;b & c are already masked to 31 max
+		ld		h,0
+		add		hl,hl			;hl * 20 * 2 (64 byte per line in ScrBuf)
+		add		hl,hl
+		add		hl,hl			;hl x 8 = in de
+		ld		e,l
+		ld		d,h				;de = hl * 8
+		
+		add		hl,hl
+		add		hl,hl
+		add		hl,de			;hl * 40 = hl * 8 * 4 + de
+		
+		ld		b,>ScrBuf
+		sla		c
+		add		hl,bc
+
+		pop		de				;Get map pointer
+
+		ldz		a,(r1)			;Get Y size into b
+		ld		b,a
+
+@mapy:
+		ldz		a,(r0)			;Get X size into c
+		ld		c,a
+
+		push	hl				;Screen ptr
+
+@mapx:		
+		call	PlotChar
+	
+		dec		c				;Loop until x span is done
+		jr		nz,@mapx
+		
+		pop		hl				;Retrieve scr ptr
+		
+		ld		a,l				;Goto next offscreen line
+		add		a,40
+		ld		l,a
+		jr		nc,@nocy
+		inc		h			
+@nocy:		
+		dec		b		
+		jr		nz,@mapy
+
+		ret1
+
+
+;**
+
+PlotChar:
+
+		ld		a,h
+		cp		#c0
+		jr		c,@clip
+
+		cp		#c3
+		jr		nc,@clip		
+
+		ld		a,(de)			; Copy palette color
+		cp		#ff
+		jr		nz,@draw
+	
+@clip:
+		inc		hl
+		inc		hl
+		inc		de
+		inc		de
+		ret
+		
+@draw:	
+		ld		(hli),a
+		inc		de
+			
+		ld		a,(de)			; Copy char
+		ld		(hli),a
+		inc		de
+
+		ret
+	
+****************************************
+*     Update the background chars
+*		    from ScrBuf
+****************************************
+
+UpdatBackGnd:
+		ld		a,(DirtyBak)
+		and		a
+		ret		z
+
+ForceUpdate:
+
+		ld		de,#9800	
+		ld		hl,ScrBuf
+
+		ld		a,18
+		ldz		(r0),a
+@mapy:
+		ld		b,20
+		ld		c,<VBK
+		
+		push	de
+
+@mapx:
+		ld		a,1
+		ld		(c),a
+
+		WaitVideo
+		
+		ld		a,(hli)
+		ld		(de),a				; Copy palette color & char bank
+		
+		xor		a
+		ld		(c),a
+	
+		ld		a,(hli)				; Copy char
+		ld		(de),a
+
+		inc		de
+
+		dec		b
+		jp		nz,@mapx
+	
+		pop		de
+	
+		ld		a,e
+		add		a,32
+		ld		e,a
+		jr		nc,@nocy
+		inc		d
+		
+@nocy:
+		ldz		a,(r0)
+		dec		a
+		ldz		(r0),a
+				
+		jp		nz,@mapy
+
+;Clean up after the softsprs
+
+		ld		hl,DirtyBak
+		dec		(hl)
+
+		ld		a,(hl)
+		and		a
+		ret		z
+
+
+		ld		hl,CopyBuf
+		ld		de,ScrBuf
+		ld		b,45			;20*18 / 8
+		
+@loop:
+		do	8
+
+		ld		a,(hli)
+		ld		(de),a
+		inc		de
+
+		ld		a,(hli)
+		ld		(de),a
+		inc		de
+
+		loop
+
+		dec		b
+		jr		nz,@loop	
+
+		ret
+
+****************************************
+* 	Copy the work scr to the copy scr
+*			ScrBuf => CopyBuf
+****************************************
+
+ScrToCopy:
+
+		ld		hl,ScrBuf
+		ld		de,CopyBuf
+		ld		bc,45			;20*18 / 8
+		
+@loop:
+		do	8
+
+		ld		a,(hli)
+		ld		(de),a
+		inc		de
+
+		ld		a,(hli)
+		ld		(de),a
+		inc		de
+		loop
+
+		dec		bc
+		ld		a,b
+		or		c
+		jr		nz,@loop	
+
+		ld		a,2
+		ld		(DirtyBak),a
+
+		ret
+
+ScrToReal:
+
+		ld		de,#9800	
+		ld		hl,ScrBuf
+
+		ld		a,18
+		ldz		(r0),a
+@mapy:
+		ld		b,20
+		ld		c,<VBK
+		
+		push	de
+
+@mapx:
+		ld		a,1
+		ld		(c),a
+
+		WaitVideo
+		
+		ld		a,(hli)
+		ld		(de),a				; Copy palette color
+		
+		xor		a
+		ld		(c),a
+	
+		ld		a,(hli)				; Copy char
+		ld		(de),a
+
+		inc		de
+
+		dec		b
+		jp		nz,@mapx
+	
+		pop		de
+	
+		ld		a,e
+		add		a,32
+		ld		e,a
+		jr		nc,@nocy
+		inc		d
+		
+@nocy:
+		ldz		a,(r0)
+		dec		a
+		ldz		(r0),a
+				
+		jp		nz,@mapy
+		ret
+		
+		
+Shite2:
+
+		ld		a,1
+		ldz		(VBK),a
+
+		ld		hl,#8000
+		ld		b,0
+@1:
+		WaitVideo
+		ld		a,l
+		ld		(hli),a
+		dec		b
+		jr		nz,@1
+
+		ld		a,0
+		ldz		(VBK),a
+		ret
+
+
+		
+		

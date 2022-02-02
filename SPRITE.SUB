@@ -1,0 +1,497 @@
+********************************************************************************
+*		          			SPRITE SUBROUTINES
+*			      
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+;BGPOS		EQU	#9800
+
+****************************************
+*        DISPLAY COLOUR SPRITE
+*
+*	  HL = SPRITE NUMBER
+*	  BC = X Y POSITION
+****************************************
+
+DISP_SPR:
+		ld	a,(CGBFlag)
+		and	a
+		jp	z,GB_DISP_SPR
+
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_spr	;is this the correct type
+		jp	nz,TestBakSpr
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld	a,c				;add x offset
+		sub	(hl)
+		add	a,8
+		ld	c,a
+		inc	hl
+
+		ldz	(r5),a			;save the start x in r5
+
+		ld	a,b				;add y offset
+		sub	(hl)
+		add	a,16
+		ld	b,a
+		inc	hl
+
+		ld	a,(hli)			;GET THE X SIZE in r0
+		ldz	(r0),a
+
+		ld	a,(hli)			;GET THE Y SIZE in r1
+		ldz	(r1),a
+
+		ldz	a,(SprPtr)		;get the next spr ptr
+		ld	e,a
+		
+		ldz	a,(SprPtrH)
+		ld	d,a		
+
+@loopy:
+		ldz	a,(r0)			;Get the X count
+
+@loopx:
+		ldz	(r3),a			;Put in temp R3
+
+		ld	a,(hli)
+		and	a
+		jp	z,@next
+
+		dec	a
+		ldz	(r4),a			;store palette in r3
+
+		ldz	a,(ObjPtr)
+		cp	40*4				;160
+		jp	nc,@exitPlex
+
+;---------------------------------------
+;	  Blit the data to the chars
+;---------------------------------------
+
+		do		8
+
+		WaitVideo
+
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		loop
+
+		call	PutObj
+
+;---------------------------------------
+;		Save the sprite pointer
+;---------------------------------------
+		
+		ld		a,d			;Make sure the ptr loops back to #8000
+		and		#87
+		ld		d,a
+
+		ldz		a,(SprNum)	;Next Sprite number
+		add		a,2
+		and		#7f
+		ldz 	(SprNum),a
+
+;---------------------------------------
+;	 Move to the next Position
+;---------------------------------------
+
+@next:
+		ld	a,c
+		add	a,8
+		ld	c,a
+
+		ldz	a,(r3)
+		dec	a
+		jp	nz,@loopx
+
+		ldz	a,(r5)			;restore c to the start x
+		ld	c,a
+
+		ld	a,b
+		add	a,16
+		ld	b,a
+
+		ldz	a,(r1)			;get y count
+		dec	a
+		ldz	(r1),a
+		
+		jp	nz,@loopy
+
+@exit:
+		ld	a,e				;Save the sprite pointer
+		ldz	(SprPtr),a
+		
+		ld	a,d
+		ldz	(SprPtrH),a
+
+		ret1
+
+@exitplex:
+
+		ld	a,e				;Save the sprite pointer
+		ldz	(SprPtr),a
+		
+		ld	a,d
+		ldz	(SprPtrH),a
+
+		ld	a,1
+		ld	(Plexer),a
+		ret1
+
+****************************************
+*        DISPLAY COLOUR SPRITE
+*
+*	  HL = SPRITE NUMBER
+*	  BC = X Y POSITION
+****************************************
+
+GB_DISP_SPR:
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_spr	;is this the correct type
+;		jp	nz,retbank1				;return if not
+
+		jp	nz,TestBakSpr
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld	a,c				;add x offset
+		sub	(hl)
+		add	a,8
+		ld	c,a
+		inc	hl
+
+		ldz	(r5),a			;save the start x in r5
+
+		ld	a,b				;add y offset
+		sub	(hl)
+		add	a,16
+		ld	b,a
+		inc	hl
+
+		ld	a,(hli)			;GET THE X SIZE in r0
+		ldz	(r0),a
+
+		ld	a,(hli)			;GET THE Y SIZE in r1
+		ldz	(r1),a
+
+		ldz	a,(SprPtr)		;get the next spr ptr
+		ld	e,a
+		
+		ldz	a,(SprPtrH)
+		ld	d,a		
+
+@loopy:
+		ldz	a,(r0)			;Get the X count
+
+@loopx:
+		ldz	(r3),a			;Put in temp R3
+
+		ld	a,(hli)
+		and	a
+		jp	z,@next
+
+		dec	a
+		ldz	(r4),a			;store palette in r3
+
+		ldz	a,(ObjPtr)
+		cp	40*4				;160
+		jp	nc,@exitPlex
+
+;---------------------------------------
+;	  Blit the data to the chars
+;---------------------------------------
+
+		do		16
+
+		WaitVideo
+
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		ld	a,(hli)
+		ld	(de),a
+		inc	de
+
+		loop
+
+		call	PutObjGB
+
+;---------------------------------------
+;		Save the sprite pointer
+;---------------------------------------
+		
+		ld		a,d			;Make sure the ptr loops back to #8000
+		and		#87
+		ld		d,a
+
+		ldz		a,(SprNum)	;Next Sprite number
+		add		a,2
+		and		#7f
+		ldz 	(SprNum),a
+
+;---------------------------------------
+;	 Move to the next Position
+;---------------------------------------
+
+@next:
+		ld	a,c
+		add	a,8
+		ld	c,a
+
+		ldz	a,(r3)
+		dec	a
+		jp	nz,@loopx
+
+		ldz	a,(r5)			;restore c to the start x
+		ld	c,a
+
+		ld	a,b
+		add	a,16
+		ld	b,a
+
+		ldz	a,(r1)			;get y count
+		dec	a
+		ldz	(r1),a
+		
+		jp	nz,@loopy
+
+@exit:
+		ld	a,e				;Save the sprite pointer
+		ldz	(SprPtr),a
+		
+		ld	a,d
+		ldz	(SprPtrH),a
+
+		ret1
+
+@exitplex:
+
+		ld	a,e				;Save the sprite pointer
+		ldz	(SprPtr),a
+		
+		ld	a,d
+		ldz	(SprPtrH),a
+
+		ld	a,1
+		ld	(Plexer),a
+		ret1
+
+****************************************
+* Initialize Sprite Ptrs and OAM mem
+****************************************
+
+		MemB	Plexer
+		MemB	MultiPlexer
+
+InitSprites:
+		xor		a					;Sprite Ptrs to #8000
+		ldz		(SprPtr),a
+		ld		a,#80
+		ldz		(SprPtrH),a
+
+		xor		a
+		ldz		(SprNum),a			;Sprite Count to 0
+
+InitSpr:
+		ld		a,(Plexer)
+		ld		(MultiPlexer),a
+
+		xor		a
+		ldz		(ObjPtr),a			;Object Count to 0
+		ld		(Plexer),a
+
+		ld		hl,OBJRAM			;Clear out the object ram
+;		xor		a
+
+		ld		a,#ff
+		
+		do		160
+			ld	(hli),a
+		loop
+	
+		ret
+	
+****************************************
+* 		 Get Max Obj Count
+****************************************
+
+GetObjCount:
+		ldz		a,(ObjPtr)
+		srl		a
+		srl		a
+		ld		(ObjCount),a
+		ret
+
+****************************************
+* 		 Get Max Obj Count
+****************************************
+
+AllowTask:
+
+		ld		a,(ObjCount)
+		cp		28
+		ccf
+		ret
+
+****************************************
+*	   STORE BYTES TO OAM
+****************************************
+
+PutObj:
+
+		push	hl
+
+		ld		h,>OBJRAM
+		ldz		a,(ObjPtr)
+;		cp		160
+;		jr		nc,@toomany
+		
+		ld		l,a
+
+		ld		(hl),b
+		inc		l
+
+		ld		(hl),c
+		inc		l
+
+		ldz		a,(SprNum)
+		ld		(hli),a
+
+		ldz		a,(r4)					;Get the palette
+;		or		%00000000				;add other sprite flags
+		ld		(hli),a
+
+		ld		a,l
+		ldz		(ObjPtr),a
+
+@toomany:
+		pop		hl
+		ret
+
+
+****************************************
+*	   STORE BYTES TO OAM
+****************************************
+
+PutObjGB:
+
+		push	hl
+
+		ld		h,>OBJRAM
+		ldz		a,(ObjPtr)
+;		cp		160
+;		jr		nc,@toomany
+		
+		ld		l,a
+
+		ld		(hl),b
+		inc		l
+
+		ld		(hl),c
+		inc		l
+
+		ldz		a,(SprNum)
+		ld		(hli),a
+
+;		ldz		a,(r4)					;Get the palette
+;		or		%00000000				;add other sprite flags
+		xor		a
+		ld		(hli),a
+
+		ld		a,l
+		ldz		(ObjPtr),a
+
+@toomany:
+		pop		hl
+		ret
+
+****************************************
+* WAIT FOR CORRECT TIME TO PUT ON CHRS
+****************************************
+
+WAIT_STAT	PUSH	AF
+
+@WAIT		LD	A,(STAT)
+		AND	2
+		JP	Z,@WAIT
+
+@WAIT2		LD	A,(STAT)
+		AND	2
+		JP	NZ,@WAIT2
+
+		POP	AF   
+		RET
+
+****************************************
+* WAIT FOR CORRECT TIME TO PUT ON CHRS
+****************************************
+
+WAIT1X:
+
+@W1		LDZ	A,(STAT)
+		AND	2
+		JR	NZ,@W1
+
+		RET
+
+
+****************************************
+*	      CLIP SPRITES
+****************************************
+
+SPR_CLIP	LD	A,B
+		CP	144+16
+		RET	NC
+
+		LD	A,C
+		CP	160+8
+		RET
+

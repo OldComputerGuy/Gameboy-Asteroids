@@ -1,0 +1,93 @@
+********************************************************************************
+*							 Emulator Detector
+* 		     		 (C) Copyright A.R.Hartley 1999
+********************************************************************************
+
+		MemB	EmuDetect
+
+****************************************
+*			Detect Emulator
+****************************************
+
+DetectEmu:
+
+		ld	hl,Txt_CharSet	;Debbug charset
+
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		cp	Type_GBC_hex	;is this the correct type
+		jp	nz,retbank1				;return if not
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		ld	a,e				;set the res bank
+		setbank
+
+		ld		c,(hl)
+		inc		hl
+		ld		b,(hl)
+		inc		hl
+
+		
+		ld		e,l
+		ld		d,h
+
+		ld		hl,#8800
+
+		push	bc
+		push	de
+
+		xor		a
+		ld		(VBK),a
+
+@Loop:
+		ld		a,(de)
+		ld		(hli),a	
+		ld		(hli),a	
+		inc		de
+		
+		dec		bc		
+		ld		a,b
+		or		c
+		jr		nz,@Loop
+
+		ld		hl,#8800		
+		pop		de
+		pop		bc
+
+@Loop2:
+		call	Wait_Stat
+		
+		ld		a,(de)
+		cp		(hl)
+		jr		nz,@GotYa
+
+		inc		hl
+		inc		hl
+	
+		inc		de
+		
+		dec		bc		
+		ld		a,b
+		or		c
+		jr		nz,@Loop2
+
+		ld		a,1
+		ld		(EmuDetect),a
+		ret1
+
+@GotYa:
+		xor		a
+		ld		(EmuDetect),a
+		ret1

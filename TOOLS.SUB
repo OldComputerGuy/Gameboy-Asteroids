@@ -1,0 +1,1023 @@
+
+****************************************
+*
+****************************************
+
+AddVels:
+		LDW	H,L,XCOORD
+		LDW	D,E,XVEL
+		ADD	HL,DE
+		CALL	CLIPX
+		STW	H,L,XCOORD
+
+		LDW	H,L,YCOORD
+		LDW	D,E,YVEL
+		ADD	HL,DE
+		CALL	CLIPY
+		STW	H,L,YCOORD
+		RET
+
+****************************************
+*
+****************************************
+
+AddVelsOff:
+		LDW	H,L,XCOORD
+		LDW	D,E,XVEL
+		ADD	HL,DE
+		STW	H,L,XCOORD
+
+		LDW	H,L,YCOORD
+		LDW	D,E,YVEL
+		ADD	HL,DE
+		STW	H,L,YCOORD
+		RET
+
+
+****************************************
+*
+****************************************
+
+CLIPX:
+		LD	A,H
+		CP	160
+		RET	C
+
+		SUB	160
+		LD	H,A
+
+		CP	80
+		RET	C
+
+		LD	H,159
+		RET
+
+****************************************
+*
+****************************************
+
+CLIPY:
+		LD	A,H
+		CP	144
+		RET	C
+
+		SUB	144
+		LD	H,A
+
+		CP	80
+		RET	C
+
+		LD	H,143
+		RET
+
+
+
+****************************************
+*		  Offscreen test
+****************************************
+
+OffScreen:
+		ldx		a,XCoordH
+		cp		160
+		jr		nc,@Off
+		
+		ldx		a,YCoordH
+		cp		144
+		jr		nc,@off
+		
+		or		a
+		ret
+		
+@off:
+		scf
+		ret
+
+
+****************************************
+*		Quick 16 bit multiply
+* 	       hl = hl * de
+****************************************
+
+QuickMul16:
+			ld		c,h
+	 		ld		a,l
+
+			ld		hl,0
+			ld		b,#10
+
+@2:			add		hl,hl
+
+			rla
+			rl		c
+			jr		nc,@1
+
+			add		hl,de
+
+@1:			dec		b
+			jr		nz,@2
+
+			ret
+
+****************************************
+*		Quick 8 bit multiply
+* 	       hl = de * a
+****************************************
+
+QuickMul8:	 		
+			ld		hl,0
+
+			add		hl,hl
+			rla
+			jr		nc,@1
+			add		hl,de
+
+@1:			add		hl,hl
+			rla
+			jr		nc,@2
+			add		hl,de
+
+@2:			add		hl,hl
+			rla
+			jr		nc,@3
+			add		hl,de
+
+@3:			add		hl,hl
+			rla
+			jr		nc,@4
+			add		hl,de
+
+@4:			add		hl,hl
+			rla
+			jr		nc,@5
+			add		hl,de
+
+@5:			add		hl,hl
+			rla
+			jr		nc,@6
+			add		hl,de
+
+@6:			add		hl,hl
+			rla
+			jr		nc,@7
+			add		hl,de
+
+@7:			add		hl,hl
+			rla
+			ret		nc
+
+			add		hl,de
+			ret
+
+****************************************
+*		  Fraction Routine
+*		  de = input number
+*		  hl = output number
+*		   a = fraction
+****************************************
+
+GetFract:			
+			ld		c,a				;c = fraction
+
+			ld		hl,0			;hl = accumulator
+			ld		b,8
+
+@loop:		sra		d				;divide de by 2
+			rr		e
+	
+			rl		c				;is top bit in c set
+			jr		nc,@noadd
+
+			add		hl,de			;add de fraction to hl
+
+@noadd:		dec		b
+			jr		nz,@loop
+			ret
+
+
+****************************************
+*		 Get Scaled Direction
+*			c = Direction
+*			b = Fraction (Speed)
+****************************************
+
+GetScaleDirX:			
+			ld		l,c			;Index Sine Table
+			ld		h,>Sine
+			ld		a,(hl)		;Get the sine
+			ld		e,a
+			rla
+			sbc		a,a
+			ld		d,a
+			
+			ld		a,b
+			call	QuickMul8	;Get Fraction
+		
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			
+			ld		e,l
+			ld		d,h
+			ret
+
+****************************************
+*		 Get Scaled Direction
+*			c = Direction
+*			b = Fraction (Speed)
+****************************************
+
+GetScaleDirY:			
+			ld		l,c			;Index Sine Table
+			ld		h,>Cosine
+			ld		a,(hl)		;Get the sine
+
+			cpl
+			inc		a
+
+			ld		e,a
+			rla
+			sbc		a,a
+			ld		d,a
+			
+			ld		a,b
+			call	QuickMul8	;Get Fraction
+			
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			
+			ld		e,l
+			ld		d,h
+			ret
+	
+****************************************
+*		 Set Scaled Direction
+*			c = Direction
+*			b = Fraction (Speed)
+****************************************
+
+SetScaleDir:
+			push	bc			;Save
+
+			ld		l,c			;Index Sine Table
+			ld		h,>Sine
+			ld		a,(hl)		;Get the sine
+
+			ld		e,a
+			rla
+			sbc		a,a
+			ld		d,a
+						
+			ld		a,b
+			call	QuickMul8	;Get Fraction
+		
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			
+			stw		h,l,XVel	;Save the x velocity
+
+			pop		bc
+
+			ld		l,c			;Index Cosine Table
+			ld		h,>Cosine
+			ld		a,(hl)		;Get the cosine
+
+			cpl
+			inc		a
+
+			ld		e,a
+			rla
+			sbc		a,a
+			ld		d,a
+			
+			ld		a,b
+			call	QuickMul8	;Get Fraction
+
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			
+			stw		h,l,YVel	;Save the x velocity
+			ret
+
+
+****************************************
+*		 Add Scaled Direction
+*			c = Direction
+*			b = Fraction (Speed)
+****************************************
+
+AddScaleDir:
+			push	bc			;Save
+
+			ld		l,c			;Index Sine Table
+			ld		h,>Sine
+			ld		a,(hl)		;Get the sine
+
+			ld		e,a
+			rla
+			sbc		a,a
+			ld		d,a
+						
+			ld		a,b
+			call	QuickMul8	;Get Fraction
+		
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			
+			ldw		d,e,XVel	;Get the x velocity
+			add		hl,de
+			stw		h,l,XVel	;Save the x velocity
+
+			pop		bc
+
+			ld		l,c			;Index Cosine Table
+			ld		h,>Cosine
+			ld		a,(hl)		;Get the cosine
+
+			cpl
+			inc		a
+
+			ld		e,a
+			rla
+			sbc		a,a
+			ld		d,a
+			
+			ld		a,b
+			call	QuickMul8	;Get Fraction
+
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			sra		h
+			rr		l
+			
+			ldw		d,e,YVel	;Get the y velocity
+			add		hl,de
+			stw		h,l,YVel	;Save the y velocity
+			ret
+
+
+****************************************
+*		Test for a Collision
+*	   If collision clear flag
+*   exits with c as original value
+****************************************
+
+IfHit:
+		ld		a,(hl)
+		and		a
+		jr		z,@nohit
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		jr		nz,@nohit
+
+		or		#80			;mark as read set bit 7
+		ld		(hl),a
+
+		scf
+		ret
+
+@nohit:
+		or		a
+		ret
+
+****************************************
+*		Test for a Collision
+*	Never register hit with parent
+*	   If collision clear flag
+*   exits with c as original value
+****************************************
+
+IfHitNotParent:
+		ld		a,(hl)
+		and		a
+		jr		z,@nohit
+
+		ld		c,a
+		
+		ld		a,(ThisTask)
+		cp		c
+		jr		nz,@nohit
+
+		or		#80			;mark as read set bit 7
+		ld		(hl),a
+
+		scf
+		ret
+
+@nohit:
+		or		a
+		ret
+
+
+****************************************
+*			Reduce Counter
+****************************************
+
+DecCounter:
+		ldx		a,Count
+		and		a
+		ret		z
+		
+		dec		a
+		stx		Count,a
+		
+		and		a
+		ret
+
+********************************************************************************
+*		 				Near Enemy Routines
+********************************************************************************
+
+****************************************
+*		Log Ship Coords
+****************************************
+
+		MemB	ShipX
+		MemB	ShipY
+
+		MemB	MinDist
+		MemB	MinTask
+
+		MemB	LastMinTask
+		MemB	RockCount
+
+LogShip:
+		ldx		a,XCoordH
+		ld		(ShipX),a
+
+		ldx		a,YCoordH
+		ld		(ShipY),a
+		ret
+
+****************************************
+*			Init NME log
+****************************************
+
+InitNME:
+		ld		a,(MinTask)
+		ld		(LastMinTask),a
+
+		ld		a,#ff
+		ld		(MinDist),a
+		ld		(ShipX),a
+
+		xor		a
+		ld		(MinTask),a
+		ld		(RockCount),a
+		ret
+
+****************************************
+*	Get coords for a task to home
+****************************************
+
+FindHoming:
+		ld		a,(LastMinTask)
+		ret		
+
+****************************************
+*			Enemy Log
+*	Enemys log there coords here
+****************************************
+
+LogNMErock:
+		ld		hl,RockCount
+		inc		(hl)
+
+LogNME:
+		ld		a,(ShipX)
+		cp		#ff
+		ret		z
+
+		ldx		c,XCoordH
+		ldx		b,YCoordH
+		
+		ld		a,(ShipX)
+		sub		c
+		ld		c,a
+		
+		ld		a,(ShipY)
+		sub		b
+		ld		b,a
+
+		call	CalcMHD
+		ld		b,a				;b = Distance
+
+		ld		a,(MinDist)
+		cp		b
+		ret		c
+		
+		ld		a,b
+		ld		(MinDist),a
+		
+		ld		a,(ThisTask)
+		ld		(MinTask),a
+		ret
+
+****************************************
+*		  Find MHD Diamond
+* 			 BC = Delta
+****************************************
+
+CalcMHD:
+		bit		7,b
+		jr		z,@posb
+
+		ld		a,b
+		cpl
+		inc		a
+		ld		b,a
+
+@posb:
+		bit		7,c
+		jr		z,@posc
+
+		ld		a,c
+		cpl
+		inc		a
+		ld		c,a
+
+@posc:
+		ld		a,b
+		cp		c
+		jr		nc,@cbig
+
+		ld		a,b
+		sra		a
+		add		a,c
+		ret
+
+@cbig:
+		ld		a,c
+		sra		a
+		add		a,b
+		ret
+
+****************************************
+*	 	 Find Bresenham Vector
+*			b = y : c = x
+*out:		  a = angle
+****************************************
+
+AngleTab:
+		db	0,	64,	64,	0	;0 Bits
+		db	8,	56,	56,	8	;1 Bits
+		db	16,	48,	48,	16	;2 Bits
+		db	24,	40,	50,	24	;3 Bits
+		db	32,	32,	32,	32	;4 Bits
+
+AngleQuad:
+		db	64,128,0,192
+
+FindAngle:
+		ld		de,#0000
+
+		bit		7,b
+		jr		z,@posb
+
+		ld		a,b
+		cpl
+		inc		a
+		ld		b,a
+
+		set		1,e
+
+@posb:	bit		7,c
+		jr		z,@posc
+
+		ld		a,c
+		cpl
+		inc		a
+		ld		c,a
+
+		set		0,e
+		
+@posc:
+		push	de				;Save direction
+
+		ld		hl,AngleTab		;0 - 45 degrees
+
+		ld		a,b
+		cp		c
+		jr		nc,@less
+
+		inc		hl				;45 - 90 degrees
+
+		ld		b,c				;c is greater
+		ld		c,a
+
+@less:
+		ld		a,e
+
+		cp		%11
+		jr		z,@is11
+
+		and		a
+		jr		nz,@not00
+
+@is11:
+		inc		hl
+		inc		hl
+@not00:
+
+		;b is larger		
+
+		ld		a,b
+		srl		a
+
+		ld		e,0
+
+		add		a,c
+		cp		b
+		jr		z,@1	
+		jr		c,@1	
+		sub		b
+		inc		e
+
+@1:		add		a,c
+		cp		b
+		jr		z,@2	
+		jr		c,@2
+		sub		b
+		inc		e
+
+@2:		add		a,c
+		cp		b
+		jr		z,@3	
+		jr		c,@3	
+		sub		b
+		inc		e
+
+@3:		add		a,c
+		cp		b
+		jr		z,@4	
+		jr		c,@4	
+		sub		b
+		inc		e
+
+@4:		ld		d,0
+		sla		e
+		sla		e
+
+		add		hl,de
+		ld		a,(hl)
+		
+		pop		de
+		
+		ld		hl,AngleQuad
+		add		hl,de
+		
+		add		a,(hl)
+		ret
+
+****************************************
+*			Turn angle
+*		   b = new angle
+*		   c = Turn speed
+****************************************
+
+TurnAngle:
+		ldx		a,Angle
+		sub		b
+		jr		z,@zero
+
+		bit		7,a
+		jr		nz,@left
+
+		ldx		a,Angle
+		sub		c
+		ld		e,a			;new angle
+		ret
+
+@left:
+		ldx		a,Angle
+		add		a,c
+		ld		e,a			;new angle
+
+		ret
+
+@zero:
+		ldx		a,Angle
+		ret
+
+****************************************
+*		  Turn avoid angle
+*		   b = new angle
+*		   c = Turn speed
+****************************************
+
+TurnAvoid:
+		ldx		a,Angle
+		sub		b
+
+		bit		7,a
+		jr		nz,@left
+
+		ldx		a,Angle
+		add		a,c
+		ret
+
+@left:
+		ldx		a,Angle
+		sub		c
+		ret
+
+****************************************
+*		 Turn Through angle
+*in:		bc = Coords
+****************************************
+
+GoAngle:
+		push	de
+		
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		ld		b,a
+
+		pop		de
+
+		ld		c,e
+		call	TurnAngle
+		
+		stx		Angle,a
+		ret
+
+****************************************
+*		 Turn Through angle
+*in:		bc = Coords
+****************************************
+
+GetAngle:		
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle		
+		stx		Angle,a
+		ret
+
+****************************************
+*		 Turn Through angle
+*in:		bc = Coords
+*			 e = Turn Speed
+*			 d = Forward Speed
+****************************************
+
+GoAngleDir:
+		push	de
+		
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		ld		b,a
+
+		pop		de
+		push	de
+		
+		ld		c,e
+		call	TurnAngle
+		
+		stx		Angle,a
+
+		pop		de
+
+		ld		c,a
+		ld		a,d
+		ld		b,a
+		call	SetScaleDir
+		ret
+
+****************************************
+*		 Turn Through angle
+*in:		bc = Coords
+*			 d = Forward Speed
+****************************************
+
+SetAngleDir:
+		push	de
+		
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		stx		Angle,a
+
+		pop		de
+
+		ld		c,a
+		ld		a,d
+		ld		b,a
+		call	SetScaleDir
+		ret
+
+****************************************
+*		 Turn Through angle
+*in:		bc = Coords
+*			 e = Turn Speed
+*			 d = Forward Speed
+****************************************
+
+OppAngleDir:
+		push	de
+		
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		ld		b,a
+
+		pop		de
+		push	de
+		
+		ld		c,e
+		call	TurnAvoid		;TurnAngle
+		
+		stx		Angle,a
+
+		pop		de
+
+		ld		c,a
+		ld		a,d
+		ld		b,a
+		call	SetScaleDir
+		ret
+
+****************************************
+*	 Get the parent task XY coord
+****************************************
+
+GetParentXY:
+		ldx		a,Parent		;get parent task
+		call	GetTaskCoords
+		ret
+
+
+****************************************
+*	 Get the parent task XY coord
+****************************************
+
+ParentState:
+
+		ldx		a,Parent
+		call	GetTaskHL
+
+		ld		de,Parent
+		add		hl,de
+		ld		a,(hl)
+		ret
+
+****************************************
+*
+****************************************
+
+		MemB	ShipX1
+		MemB	ShipY1
+		MemB	ShipX2
+		MemB	ShipY2
+
+SetShipXY:
+		ldx		a,Remote
+		and		a
+		jr		nz,@remote
+		
+		ld		a,c
+		ld		(ShipX1),a
+
+		ld		a,b
+		ld		(ShipY1),a
+		ret
+
+@remote:
+		ld		a,c
+		ld		(ShipX2),a
+
+		ld		a,b
+		ld		(ShipY2),a
+		ret
+
+
+****************************************
+*	 Get the ship XY coord
+****************************************
+
+GetShipXY:
+
+		ld		a,(Connect)
+		and		a
+		jr		z,@p1
+
+		ld		a,(ThisTask)
+		and		1
+		rla
+		rla
+		rla
+		rla
+		rla
+		rla		
+		ld		c,a
+		
+		ld		a,(Time)
+		and		64
+		xor		c
+		jr		z,@p2
+
+@p1:
+		ld		a,(ShipX1)
+		ld		c,a
+		
+		ld		a,(ShipY1)
+		ld		b,a
+		ret
+
+@p2:
+		ld		a,(ShipX2)
+		ld		c,a
+		
+		ld		a,(ShipY2)
+		ld		b,a
+		ret
+
+
+****************************************
+*	 Get the Rand XY coord
+****************************************
+
+GetRandXY:
+
+		call	Random
+		ld		c,a
+		
+		call	Random
+		ld		b,a
+		ret

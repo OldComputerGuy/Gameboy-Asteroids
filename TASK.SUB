@@ -1,0 +1,555 @@
+********************************************************************************
+*         					 Simple Multitasking
+*			      
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+
+****************************************
+*          COPY HL TO ANINBASE
+*           HL = PLAYBUF1 OR 2
+****************************************
+
+GetTask
+		PUSH	HL
+		PUSH	BC
+
+		LD	C,<TASKBASE
+		DO	BUFLEN
+
+		LD	A,(HLI)
+		LD	(C),A
+		INC	C
+
+		LOOP
+
+		POP	BC
+		POP	HL
+		RET
+
+****************************************
+*          COPY ANINBASE TO HL
+*           HL = PLAYBUF1 OR 2
+****************************************
+
+PutTask
+		PUSH	HL
+		PUSH	BC
+		
+		LD	C,<TASKBASE
+		DO	BUFLEN
+
+		LD	A,(C)
+		LD	(HLI),A
+		INC	C
+
+		LOOP
+
+		POP	BC
+		POP	HL
+		RET
+
+****************************************
+*	       GET TaskBuffer
+*	       ~~~~~~~~~~
+*	   A = BUFFER NUMBER
+*	   E = START VARIABLE
+*
+*OUT:  DE POINTS TO OTHER BUFFER
+****************************************
+
+GetTaskBuffer
+;		PUSH	HL
+
+		LD	D,0
+
+		LD	HL,TaskBuffer
+		ADD	HL,DE
+
+		AND	A
+		JP	Z,@END
+
+		LD	DE,BUFLEN
+
+@LOOP	ADD	HL,DE
+		DEC	A
+		JP	NZ,@LOOP
+
+@END:
+;		LD	E,L
+;		LD	D,H
+
+;		POP	HL
+		RET
+
+
+****************************************
+*	 Build Task Buffer Table
+****************************************
+
+InitTaskList:
+
+		ld		hl,TaskBuffer
+		ld		de,TaskList
+		ld		b,MaxUsed
+
+		xor		a			;Dummy entry task 0
+		ld		(de),a
+		inc		de
+
+		ld		(de),a	
+		inc		de
+		
+@loop:
+		ld		a,l
+		ld		(de),a
+		inc		de
+		
+		ld		a,h
+		ld		(de),a
+		inc		de
+
+		ld		a,l
+		add		a,BufLen
+		ld		l,a
+		jr		nc,@ok		
+		inc		h
+@ok:
+
+		dec		b
+		jp		nz,@loop
+		ret
+
+****************************************
+*	       GET TaskBuffer
+*	       ~~~~~~~~~~
+*	   A = BUFFER NUMBER
+*
+*OUT:  HL POINTS TO OTHER BUFFER
+****************************************
+
+GetTaskHL:
+
+		add		a,a
+		ld		e,a
+		ld		d,0
+		ld		hl,TaskList
+		add		hl,de
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+		inc		hl
+		ld		a,(hl)
+		rla
+		ret		c			;task Dead
+
+		dec		hl
+		or		a
+		ret
+
+;** old **
+;
+;		ld		hl,TaskBuffer
+;		ld		b,MaxUsed
+;		ld		c,1
+;
+;		ld		de,BufLen
+;
+;@loop	cp		c
+;		jr		z,@Found
+;		
+;		add		hl,de
+;
+;		inc		c
+;		dec		b
+;		jp		nz,@loop
+;
+;@NotFound:
+;		scf
+;		ret
+;
+;@Found:
+;		inc		hl
+;		ld		a,(hl)
+;		rla
+;		ret		c			;task Dead
+;
+;		dec		hl
+;
+;		or		a
+;		ret
+
+****************************************
+*	       GET TaskBuffer
+*	       ~~~~~~~~~~
+*	   A = BUFFER NUMBER
+*	   E = START VARIABLE
+*
+*OUT:  DE POINTS TO OTHER BUFFER
+****************************************
+
+GetTaskCoords:
+
+		call	GetTaskHL
+		ret		c
+
+		push	hl
+		
+		ld		de,XCoordH
+		add		hl,de
+		ld		c,(hl)
+		
+		pop		hl
+		push	hl
+
+		ld		de,YCoordH
+		add		hl,de
+		ld		b,(hl)
+		
+		pop		hl
+
+		ld		de,Angle
+		add		hl,de
+		ld		a,(hl)
+		
+		or		a
+		ret
+
+****************************************
+*
+****************************************
+
+IsTaskAlive:
+
+		call	GetTaskHL
+		ret
+
+****************************************
+*	    CLEAR ALL SPRITES	
+****************************************
+
+InitTasks:
+		Task	0
+		ld		b,MaxUsed
+
+ResetTasks:
+
+@loop:
+		call	GetTask
+		stx		TaskAddH,#ff
+
+		call	PutTask
+
+		ld		de,BufLen
+		add		hl,de
+
+		dec		b
+		jr		nz,@loop
+		ret
+
+
+****************************************
+*	 LOOK FOR A FREE SPRITE	
+****************************************
+
+NewTask:
+		ld		hl,TaskBuffer+1
+		ld		de,BufLen
+		ld		b,MaxUsed
+		ld		c,1
+	
+@loop:
+		ld		a,(hl)
+		cp		#ff		
+		jr		z,@Found
+		
+		add		hl,de			;Move to next buffer
+
+		inc		c				;Next Task number
+		dec		b
+		jr		nz,@loop
+
+		scf
+		ret
+
+@Found:
+		xor		a
+		ld		(ThisTask),a
+
+		dec		hl
+		or		a
+		ret
+
+****************************************
+*			 Add Task
+****************************************
+
+AddTask:
+		call	NewTask
+		ret		c
+
+		call	PutTask
+		or		a
+		ret
+
+****************************************
+*			Push Task
+****************************************
+
+		MemB	OldTask
+
+PushTask:
+		ldm		hl,CurrentTask			;get the current task buffer
+		call	PutTask
+		
+		ld		a,(ThisTask)
+		ld		(OldTask),a
+		ret
+
+PopTask:
+		ld		a,(OldTask)
+		ld		(ThisTask),a
+
+		ldm		hl,CurrentTask			;get the current task buffer
+		call	GetTask
+		ret
+
+****************************************
+*			Spawn Task
+****************************************
+
+SpawnTask:
+		push	hl
+		
+		ldm		hl,CurrentTask			;get the current task buffer
+		CALL	PutTask
+
+		pop		hl
+		
+		ld		de,@RetSpawn
+		push	de
+		
+		jp		(hl)
+
+@RetSpawn:
+
+		ldm		hl,CurrentTask			;get the current task buffer
+		CALL	GetTask
+		ret
+
+****************************************
+*	 LOOK FOR A FREE SPRITE	
+****************************************
+
+TasksAlive:
+		ld		hl,TaskBuffer+1
+		ld		de,BufLen
+		ld		b,MaxUsed
+		ld		c,0
+		
+@loop:
+		ld		a,(hl)
+		cp		#ff
+		jr		z,@skip
+
+		inc		c
+@skip:
+		add		hl,de			;Move to next buffer
+
+		dec		b
+		jr		nz,@loop
+		
+		ld		a,c
+		ret
+
+****************************************
+*          Run all tasks
+****************************************
+
+		MemW	CurrentTask
+
+RunNMETasks:
+		Task	2
+		
+		ld		b,MaxUsed-2
+		ld		c,3
+
+		inc		hl
+		jp		RunTaskLp
+
+
+RunTasks:
+		Task	0
+		
+		ld		b,MaxUsed
+		ld		c,1
+
+		inc		hl
+
+RunTaskLp:
+@loop:
+		bit		7,(hl)			;TEST TASKADDH
+		jr		nz,@NoBuffer
+
+		ld		a,c
+		ld		(ThisTask),a
+
+		dec		hl					;align task
+		
+		push	bc
+		push	hl
+
+		stm		CurrentTask,hl		;Save the current task buffer
+
+		call	GetTask
+
+		ld		hl,@RetAdd
+		push	hl
+
+		ld		a,1
+		SetBank
+
+		ldw		h,l,TASKADDL
+		jp		(hl)
+
+@RetAdd:
+		pop		hl
+		call	PutTask
+
+		pop		bc
+		inc		hl			;dealign
+
+@NoBuffer:
+
+		ld		de,BufLen
+		add		hl,de
+
+		inc		c		
+		dec		b
+		jr		nz,@loop
+
+		call	EnableTasks
+		ret
+
+****************************************
+*            Run a Task
+*	 a = the task buffer number
+****************************************
+
+RunShipTasks:
+
+		ld		a,(Connect)
+		and		a
+		jr		z,@run12
+		
+		ld		a,(Master)
+		and		a
+		jr		z,@run12
+
+		ld		a,2
+		call	ExecTask
+
+		ld		a,1
+		call	ExecTask
+		ret
+		
+@run12:
+		ld		a,1
+		call	ExecTask
+
+		ld		a,2
+		call	ExecTask
+		ret
+
+;; !! Remember real task nums for this routine
+
+ExecTask:
+		ld		(ThisTask),a
+
+		call	GetTaskHL
+		ret		c
+
+		push	hl
+		stm		CurrentTask,hl		;Save the current task buffer
+
+		call	GetTask
+
+		ld		hl,@RetAdd
+		push	hl
+
+		ld		a,1
+		SetBank
+
+		ldw		h,l,TaskAddL
+		jp		(hl)
+
+@RetAdd:
+		pop		hl
+		call	PutTask
+		ret
+
+****************************************
+*          Run all tasks
+****************************************
+
+EnableTasks:
+		Task	0
+		inc		hl
+		
+		ld		b,MaxUsed
+		ld		c,1
+
+@loop:
+		bit		7,(hl)			;ignor if task active
+		jr		z,@No
+
+		ld		a,(hl)			;if inactive but not #ff
+		cp		#ff
+		jr		z,@No
+
+		inc		a				;step up
+		ld		(hl),a
+
+@No:
+
+		ld		de,BufLen
+		add		hl,de
+
+		inc		c		
+		dec		b
+		jr		nz,@loop
+
+		ret
+
+****************************************
+*          Run all tasks
+****************************************
+
+SendBackChan:
+		ldz		(r0),a
+		
+		ld		hl,TaskBuffer
+		ld		de,BufLen
+		ld		b,1
+@loop:
+		ld		a,b
+		cp		c
+		jr		z,@chan
+
+		add		hl,de
+
+		inc		b
+		
+		ld		a,b
+		cp		MaxUsed
+		jr		nz,@loop
+		ret
+
+@chan:	ld		de,BackChan
+		add		hl,de
+		
+		ldz		a,(r0)
+		ld		(hl),a
+		ret
+

@@ -1,0 +1,180 @@
+** GameTasker Gameboy Engine **
+
+
+Task Buffer Commands
+--------------------
+
+stn XCoord, n16
+
+	Store a 16bit number, low byte in XCoord, high byte in
+	XCoord+1. Kills A reg.
+
+stx XCoord, reg8
+
+	Stores a 8bit register in XCoord. Kills A reg.
+
+ldx reg8,XCoord
+
+	Load a 8bit register with XCoord, Kills A.
+
+
+stw h,l,XCoord
+
+	Stores a 16bit register pair, low byte L in XCoord, 
+	high byte H in XCoord+1. Kills A reg.
+
+
+ldw h,l,XCoord
+
+	Loads a 16bit register pair, low byte L from XCoord,
+	high byte H from XCoord+1. Kills A reg.
+
+
+Move addr
+
+	Changes the next execution start point of a task, the new 
+	exec address takes effect the next time the task is run.
+
+	Same as: stn TaskAddrL,Addr
+
+
+KillTask			; kill this task
+
+
+	Sets the TaskAddr to #ffff, the task will cease to run this
+	takes effect the next time the task is run.
+
+
+jp	AddTask			;Add this task buffer to the task list
+
+	Adds a new task buffer to the task buffer list.
+	If it cannot find a free buffer it throws the buffer away.
+
+ld	a,(ThisTask)	;get the current task number (1-x)
+
+	While inside a running task this can be read to find you task
+	buffer ID.
+
+ld		hl,seqnuber
+call	InitSeq
+stw		h,l,SeqHandle
+
+	Initialise a new sequence.
+
+
+de = Sequence Number
+hl = Seq Handle
+call ChangeSeq
+
+	Changes a sequence handles animation.
+
+ldw		h,l,SeqHandle			;Delete the seq
+call	KillSeq
+
+		Delete a Sequence.
+
+
+ldx		b,YCoordH			;Coords in de
+ldx		c,XCoordH
+ldw		h,l,SeqHandle			;Seq handle in anim
+call	RunSeq
+
+		Run a sequence.
+
+Indexed Sequences
+-----------------
+
+	Indexed sequences don't need to be initialised, there
+	just like printing a sprite but with collisions.
+
+		b = YCoord
+		c = XCoord
+		hl = sequence
+		d = index
+
+		CALL IndexSeq
+
+		b = YCoord	
+		c = XCoord
+		hl = sequence
+		d = index
+		e = sequence offset		
+
+		CALL DualIndexSeq
+
+Collision
+---------
+
+Log a collision test request.
+
+		d = group1
+		e = group2
+		hl = pointer to word notifier
+
+		call	HitGroup			; Make request
+
+Test for a collision between 2 groups.
+
+		hl = pointer to byte notifier
+
+		call	IfHit
+		jr		c,@hit				;jump if hit
+
+
+example task:
+
+****************************************
+*	    	Example Task
+****************************************
+
+		MemW	FistAndHead
+
+Init_Task:
+		xor		a					;make this task 0
+		ld		(ThisTask),a
+
+		stn		XCoord,#5000		;set the start coords
+		stn		YCoord,#4800
+
+		stn		XVel,#ff00			;X SPEED
+		stn		YVel,#0180			;Y SPEED
+
+		ld		hl,seq_animation
+		call	InitSeq
+		stw		h,l,Anim			;Use anim as seq handle
+
+		move	StartTask			;next exec address
+
+		jp		AddTask				;add this task buffer
+
+StartTask:
+
+		ld		de,#0201			;check group 1 & 2 for collision		
+		ld		hl,FistAndHead		;Notifier
+		call	HitGroup
+
+		call	AddVels				; add vels to coords
+
+		;Run a sequence
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		;test for collision
+
+		ld		hl,FistAndHead+1	;test for a collision
+		call	IfHit
+		jr		c,@hit				;jump if hit
+
+		ld		a,(Seq_Alpha)		;has the sequence finished
+		cp		#ff
+		ret		nz					;ret if it has'nt
+
+@hit:
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+		
+		KillTask					;kill this task
+		ret

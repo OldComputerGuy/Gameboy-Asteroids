@@ -1,0 +1,1074 @@
+********************************************************************************
+*		  	      GameTasker GameBoy Instrument Engine
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+;	if MUSICROM = 0
+MusicPage	equ	#40
+;	else
+;MusicPage	equ	#a0
+;	endif
+
+****************************************
+*		 Note frequency table
+*			   C1 - GS8
+****************************************
+
+FreqTab:
+		dw	#0010,#0082,#00EE,#0153,#01B3,#020E,#0263,#02B4,#0300,#0348,#038C,#03CC	;1
+		dw	#0408,#0441,#0477,#04AA,#04DA,#0507,#0532,#055A,#0580,#05A4,#05C6,#05E6	;2
+		dw	#0604,#0621,#063B,#0655,#066D,#0683,#0699,#06AD,#06C0,#06D2,#06E3,#06F3	;3
+		dw	#0702,#0710,#071E,#072A,#0736,#0742,#074C,#0756,#0760,#0769,#0771,#0779	;4
+		dw	#0781,#0788,#078F,#0795,#079B,#07A1,#07A6,#07AB,#07B0,#07B4,#07B9,#07BD	;5
+		dw	#07C1,#07C4,#07C7,#07CB,#07CE,#07D0,#07D3,#07D6,#07D8,#07DA,#07DC,#07DE	;6
+		dw	#07E0,#07E2,#07E4,#07E5,#07E7,#07E8,#07EA,#07EB,#07EC,#07ED,#07EE,#07EF	;7
+		dw	#07F0,#07F1,#07F2,#07F3,#07F4,#07F5,#07F6,#07F7,#07F8,#07F9,#07FA,#07FB	;+/-8
+
+****************************************
+*			Wave buffer data
+****************************************
+
+DigiWave:
+		db	#ff,#ff,#ff,#ff
+		db	#ff,#ff,#ff,#ff
+		db	#00,#00,#00,#00
+		db	#00,#00,#00,#00
+
+****************************************
+*  Channel 3 volume translation table
+****************************************
+
+VolChan3:
+		db	#00,#00,#00,#00
+		db	#60,#60,#60,#60		;shift 2
+		db	#40,#40,#40,#40		;shift 1
+		db	#20,#20,#20,#20		;no shift
+
+****************************************
+*	Instrument buffer data locations
+****************************************
+
+ToneBuf		=	#00
+WDBuf		=	#40
+AmpBuf		=	#80
+ToneBufSize	=	#c0
+ToneBufStep	=	#c1
+AmpBufSize	=	#c2
+AmpBufStep	=	#c3
+WDBufSize	=	#c4
+WDBuftep	=	#c5
+InstType	=	#c6
+InstArp		=	#c7
+InstArpSpd	=	#c8
+Detune		=	#c9
+ALoopPoint	=	#ca
+BLoopPoint	=	#cb
+Verifier	=	#cc
+InstChan	=	#cd
+StartPitch	=	#ce
+StartVol	=	#cf
+AEndPoint	=	#d0
+BEndPoint	=	#d1
+Priority	=	#d2
+
+****************************************
+*	  SEQUENCE BUFFER EQUATES
+****************************************
+
+NUM		= 0
+
+		EquInc	AmpPos			;Amplitude pos (#ff = done)
+		EquInc	AmpTimer		;Amplitude timer
+
+		EquInc	PitchPos		;PitchBend pos (#ff = done)
+		EquInc	PitchTimer		;PitchBend timer
+
+		EquInc	Instrum			;This instrument bank
+		EquInc	Vol				;Channels current volume
+		
+		EquInc	FreqL			;The frequency of this sound
+		EquInc	FreqH
+	
+		EquInc	RealNote		;The real note value
+		EquInc	CPriority		;Chan Priority
+		EquInc	ChanBufLen		;Total buffer length
+
+ChanBase EQU	FRAM
+		FMemS	ChanDat,ChanBufLen		;Fast Sequence buffer
+
+****************************************
+*	  General Instrument Variables
+****************************************
+	
+		FMemB	PitchBend
+		FMemB	CurChan
+		FMemB	Vol1
+		FMemB	Vol2
+		FMemB	Vol3
+		FMemB	Vol4
+
+		MEMS	Voice1,ChanBufLen
+		MEMS	Voice2,ChanBufLen
+		MEMS	Voice3,ChanBufLen
+		MEMS	Voice4,ChanBufLen
+
+		MemB	Pri0
+		MemB	Pri1
+		MemB	Pri2
+		MemB	Pri3
+
+****************************************
+*		Change the base index
+****************************************
+
+		IndexBase ChanBase
+
+****************************************
+*		Copy HL to Sequence Base
+*			HL = ChanBuffer
+****************************************
+
+GetChan	ld		c,<ChanBase
+
+		do		ChanBufLen
+
+		ld		a,(hli)
+		ld		(c),a
+		inc		c
+
+		loop
+		ret
+
+****************************************
+*       Copy Channel Base to hl
+*			HL = ChanBuffer
+****************************************
+
+PutChan	ld		c,<ChanBase
+
+		do		ChanBufLen
+
+		ld		a,(c)
+		ld		(hli),a
+		inc		c
+
+		loop
+
+		ret
+
+****************************************
+*		   Sound test menu
+****************************************
+
+		MemB	ThisVol
+		MemB	ThisPitch
+		MemB	ThisChan
+		MemB	ThisInst
+	
+		MemB	Changed
+
+SoundTest:
+		call	Init_Game_Scr
+		call	InitSound
+		call	InitMusic
+
+		call	InitSpr
+		call	NoFontMap
+
+		ld		a,1
+		ld		(DMA_GO),a
+
+		call	Wait_Fly
+
+		call	CopyChars
+
+		ld		hl,PAL_DebugPal
+		call	SetBGPal
+
+		call	ClsSpace
+		call	ScrToCopy				; Copy the work screen to the copy screen
+
+		ld		a,15
+		ld		(ThisVol),a
+
+		ld		a,22
+		ld		(ThisPitch),a
+
+		ld		a,0
+		ld		(ThisChan),a
+
+		ld		a,0
+		ld		(ThisInst),a
+
+		ld		a,1
+		ld		(Changed),a
+
+;		ld		a,MIDI_Introb
+;		call	PlayMusic
+
+SoundLoop:
+@wf:
+		ldz		a,(ly)
+		cp		64
+		jr		nz,@wf
+
+		ld		hl,#ffff
+		call	SetBG0
+
+		call	Sound_Int
+		call	Midi_Int
+
+		ld		hl,#0000
+		call	SetBG0
+
+		call	GetKeys
+		call	TestReset
+
+		call	Print
+		db		at,0,0,"Sound Tester"
+		
+		db		at,2,0,"Volume  %b"
+		dw		ThisVol
+
+		db		at,3,0,"Pitch   %b"
+		dw		ThisPitch
+
+		db		at,5,0,"Chan    %b"
+		dw		ThisChan
+
+		db		at,7,0,"Instr   %b"
+		dw		ThisInst
+		
+		db		stop
+
+		ld		a,(Changed)
+		and		a
+		call	nz,UpdatBackGnd		
+
+		xor		a
+		ld		(Changed),a
+
+		ld		hl,ThisVol
+
+		ld		a,(Trigger)
+		bit		Bit_Key_a,a
+		jr		z,@noa
+
+		ld		(Changed),a
+
+		call	InitSound
+
+		ld		a,(ThisChan)
+		inc		a
+		and		3
+		ld		(ThisChan),a
+
+@noa:
+		ld		a,(Trigger)
+		bit		Bit_Key_b,a
+		jr		z,@nob
+
+		ld		(Changed),a
+	
+		call	TestInstr
+
+@nob:
+		ld		a,(Trigger)
+		bit		Bit_Key_Up,a
+		jr		z,@noInc
+
+		ld		(Changed),a
+
+		ld		a,(ThisPitch)
+		inc		a
+		and		63
+		ld		(ThisPitch),a
+
+@noInc:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Down,a
+		jr		z,@noDec
+
+		ld		(Changed),a
+
+		ld		a,(ThisPitch)
+		dec		a
+		and		63
+		ld		(ThisPitch),a
+
+@noDec:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Right,a
+		jr		z,@noInc2
+
+		ld		(Changed),a
+
+		ld		a,(ThisInst)
+		inc		a
+		;and		15
+		ld		(ThisInst),a
+
+@noInc2:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Left,a
+		jr		z,@noDec2
+
+		ld		(Changed),a
+
+		ld		a,(ThisInst)
+		dec		a
+		;and		15
+		ld		(ThisInst),a
+
+@noDec2:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Select,a
+		jr		z,@noInc3
+
+		ld		(Changed),a
+
+		ld		a,(ThisVol)
+		inc		a
+		and		15
+		ld		(ThisVol),a
+
+@noInc3:
+
+;		ld		a,(Trigger)
+;		bit		Bit_Key_Start,a
+;		jr		z,@noDec3
+;
+;		ld		a,(ThisVol)
+;		dec		a
+;		and		15
+;		ld		(ThisVol),a
+;@noDec3:
+
+		ld		a,(Keys)
+		cp		Key_Start
+		jp		z,MON_ENTER
+
+		ld		hl,Time
+		inc		(hl)
+
+		jp		SoundLoop
+
+****************************************
+*			Wave buffer data
+****************************************
+
+InitSound:
+		xor	a				; channel 1 to 4 disabled
+		or	#80				; master sound enabled
+		ldz	(nr52),a		; transfer to soundcontrol 52
+
+		ld	a,%10100101		; ch 4&3 to so2,ch 2&1 to so1
+		ldz	(nr51),a		; transfer to soundcontrol 51
+
+		ld	a,#07			; so1 output level
+		or	#70				; so2 output level
+		or	#08				; sound output 1 on
+		or	#80				; sound output 2 on
+		ldz	(nr50),a		; transfer to soundcontrol 50
+
+		xor	a
+		ldz	(nr30),a
+
+		ld	hl,DigiWave
+		ld	bc,WaveRam
+		ld	e,#10
+
+@copywave:
+		ld	a,(hli)
+		ld	(bc),a
+		inc	bc
+		dec	e
+		jp	nz,@copywave
+
+		ld	d,0				;Note
+		ld	e,0				;Volume
+		
+		ld	a,#f0			;Volume #f
+		ldz	(nr12),A
+
+		xor	a
+		ldz	(nr13),A
+		ldz	(nr14),A
+
+		ld	A,#ff			;// S01,S02(R/L)
+		ld	a,%11011110
+		ldz	(nr51),A
+
+		ld	a,-1
+		ldz	(Vol1),a
+		ldz	(Vol2),a
+		ldz	(Vol3),a
+		ldz	(Vol4),a
+
+		xor	a
+		ldz	(nr12),a
+		ldz	(nr22),a
+		ldz	(nr32),a
+		ldz	(nr42),a
+
+		ld	a,0
+		ldz	(nr10),A		;Sweep register
+		ldz	(nr11),A		;Wave pattern duty
+		ldz	(nr21),A		;Wave pattern duty
+	
+		ld	a,#ff			;silence all the voices
+		ld	(Voice1),a
+		ld	(Voice2),a
+		ld	(Voice3),a
+		ld	(Voice4),a
+
+		xor	a				;Priorities
+		ld	(Pri0),a
+		ld	(Pri1),a
+		ld	(Pri2),a
+		ld	(Pri3),a
+		ret
+
+****************************************
+*		 Sound Interrupt entry
+****************************************
+
+Sound_Int:
+
+		ld		a,MusicBank
+		SetBank
+
+;---------------------------------------
+;			Run Voice 1
+;---------------------------------------
+
+		xor		a
+		ld		(CurChan),a
+
+		ld		hl,Voice1
+		ld		a,(hl)
+		cp		#ff
+		jr		z,@noVoice1
+
+		call	GetChan
+
+		call	RunInstr
+
+		ld		hl,Voice1
+		call	PutChan
+
+@noVoice1:
+
+;---------------------------------------
+;			Run Voice 2
+;---------------------------------------
+
+		ld		a,1
+		ld		(CurChan),a
+
+		ld		hl,Voice2
+		ld		a,(hl)
+		cp		#ff
+		jr		z,@noVoice2
+
+		call	GetChan
+		
+		call	RunInstr
+
+		ld		hl,Voice2
+		call	PutChan
+
+@noVoice2:
+
+;---------------------------------------
+;			Run Voice 3
+;---------------------------------------
+
+		ld		a,2
+		ld		(CurChan),a
+
+		ld		hl,Voice3
+		ld		a,(hl)
+		cp		#ff
+		jr		z,@noVoice3
+
+		call	GetChan
+
+		call	RunInstr
+		
+		ld		hl,Voice3
+		call	PutChan
+
+@noVoice3:
+
+;---------------------------------------
+;			Run Voice 4
+;---------------------------------------
+
+		ld		a,3
+		ld		(CurChan),a
+
+		ld		hl,Voice4
+		ld		a,(hl)
+		cp		#ff
+		jr		z,@noVoice4
+
+		call	GetChan
+
+		call	RunInstr
+
+		ld		hl,Voice4
+		call	PutChan
+
+@noVoice4:
+		ret
+
+****************************************
+*	
+****************************************
+
+TestInstr:
+		
+		ld		a,MusicBank
+		SetBank
+
+		ld		a,(ThisChan)			;Channel
+		ld		e,a
+		
+		ld		a,(ThisVol)
+		ld		b,a				;Volume
+
+		ld		a,(ThisPitch)
+		ld		c,a				;Note
+		
+		ld		a,(ThisInst)	;Instrument
+		call	PlayInstr
+
+		ret
+
+
+****************************************
+*	       Play an instrument
+*	  A = Inst number (#40 - #7f)
+*	  B = Inst volume (#00 - #0f)
+*	  C = Real Note
+*	  E = Channel (0-3)
+****************************************
+
+VoiceTab:
+		dw	Voice1,Voice2,Voice3,Voice4
+
+PlayInstr:
+		add		a,MusicPage
+		stx		Instrum,a		;Save the instrument
+		ld		h,a
+
+		ld		a,MusicBank
+		SetBank
+
+		ld		l,Verifier
+		ld		a,(hl)
+		cp		#55
+		ret		nz
+
+;		ld		l,Priority		;Get Inst Priority
+;		ld		a,(hl)
+;		ld		d,0
+;		ld		hl,Pri0
+;		add		hl,de
+;
+;		cp		(hl)				;Don't play if lower
+;		ret		c
+;
+;		ld		(hl),a			;Set priorities
+
+		ldx		h,Instrum
+
+;sort out SFX types
+
+		ld		l,InstChan
+		ld		a,(hl)
+		and		a
+		jr		z,@nochan
+
+		dec		a
+		ld		e,a				;set the channel
+
+@nochan:
+		ld		l,StartPitch
+		ld		a,(hl)
+		and		a
+		jr		z,@nosp
+
+		ld		c,a
+@nosp:
+
+		ld		l,StartVol
+		ld		a,(hl)
+		and		a
+		jr		z,@novol
+
+		ld		b,a
+@novol:
+
+		ld		a,b				;Save its volume
+		swap	a				;Set volume translation
+		stx		Vol,a
+
+		ld		a,128			;set to half
+		stx		AmpTimer,a
+		stx		PitchTimer,a			
+
+		ld		a,AmpBuf
+		stx		AmpPos,a
+		
+		ld		a,ToneBuf
+		stx		PitchPos,a
+
+		ld		a,c				;Save the real note
+		stx		RealNote,a
+
+		ld		a,e				;Channel 3 pitch corretion
+		cp		2
+		jr		nz,@NoCor
+
+		ld		a,c
+		add		a,12
+		ld		c,a
+@NoCor:
+
+		ld		l,Detune		;Add Tuning
+		ld		a,(hl)
+		add		a,c
+		ld		c,a
+
+		ld		b,0				;Translate the note
+		ld		hl,FreqTab		;to GB Freq
+		add		hl,bc
+		add		hl,bc
+
+		ld		a,(hli)		;save the Freq
+		stx		FreqL,a
+		
+		ld		a,(hli)
+		stx		FreqH,a
+
+		ld		a,e			;set the voice buffer
+		and		3
+		add		a,a			;x2
+		ld		e,a
+		ld		d,0
+		ld		hl,VoiceTab
+		add		hl,de
+				
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+		
+		call	PutChan
+		ret1
+
+****************************************
+*	   Run an instruments data
+****************************************
+
+RunInstr:
+		ldx		a,AmpPos
+		cp		#ff
+		ret		z
+
+;---------------------------------------
+;		 Deal with amplitude
+;---------------------------------------
+
+		ld		b,a				;save amp pos
+		ld		l,a
+
+		ldx		a,Instrum		;get the instrument buffer
+		ld		h,a
+
+		ld		a,(hl)			;get amp value in e
+
+		cp		#ff				;check for end of amp
+		jr		z,@EndSnd
+
+		ld		e,a				;save amp value
+
+		ld		l,AmpBufStep
+		ld		c,(hl)			;get the amp step
+
+		ldx		a,AmpTimer		;Step though sound
+		add		a,c
+		stx		AmpTimer,a
+		
+		ld		a,b				;get amppos
+		adc		a,0
+		stx		AmpPos,a
+
+;---------------------------------------
+;		 Deal with pitch bend
+;---------------------------------------
+
+		Call	Bender
+
+;---------------------------------------
+;			Output the sound
+;---------------------------------------
+
+		ld		h,>VolTran			;translate volume
+		ldx		a,Vol				;get the main vol
+		or		e					;mix the amp vol
+		ld		l,a					;set index
+		ld		c,(hl)				;get the new volume
+
+		ldx		a,FreqL
+		ld		e,a
+
+		ldx		a,FreqH
+		ld		d,a
+		
+		jp		OutVoice
+
+;---------------------------------------
+;			 Mute a voice
+;---------------------------------------
+
+@EndSnd:
+		stx		AmpPos,a		;put #ff in amppos
+
+		ld		l,InstType		;get the intrument type
+		ld		e,(hl)
+		bit		1,e				;is inst looping
+		jp		z,MuteVoice
+
+;---------------------------------------
+;			 voice looping
+;---------------------------------------
+
+		ld		l,ALoopPoint	;Get loop point
+		ld		a,(hl)
+		add		a,AmpBuf		;Correct Ampbuf pos
+		stx		AmpPos,a
+
+		bit		2,e				;ret if inst phasing
+		jp		nz,RunInstr
+
+		ld		l,BLoopPoint	;Get loop point
+		ld		a,(hl)
+		add		a,ToneBuf		;Correct Ampbuf pos
+		stx		PitchPos,a
+
+		jp		RunInstr
+		
+****************************************
+*			Pitch Bender
+****************************************
+
+Bender:
+		xor		a
+		ldz		(PitchBend),a
+		
+		ldx		a,PitchPos
+		cp		#ff
+		ret		z
+
+		ld		l,a
+		ld		a,(hl)			;get amp value in e
+
+		cp		#ff				;check for end of bend
+		jr		z,@EndBend
+		
+		ldz		(PitchBend),a
+
+		ld		l,ToneBufStep
+		ld		c,(hl)			;get the amp step
+
+		ldx		a,PitchTimer	;Step though sound
+		add		a,c
+		stx		PitchTimer,a
+		
+		ldx		a,PitchPos		;get amppos
+		adc		a,0
+		stx		PitchPos,a
+		ret
+
+@EndBend:
+
+		ld		l,InstType		;get the intrument type
+		ld		a,(hl)
+		bit		2,a				;is inst phasing
+		ret		z
+
+		ld		l,BLoopPoint	;Get loop point
+		ld		a,(hl)
+		add		a,ToneBuf		;Correct Ampbuf pos
+		stx		PitchPos,a
+
+		ld		l,a
+		ld		a,(hl)			;get bend value in e
+		cp		#ff				;check for end of bend
+		ret		z
+		
+		ldz		(PitchBend),a
+		ret
+		
+****************************************
+* Play volome and pitch from a channel
+* 			C = Volume
+* (PitchBend) = Pitch Bend
+****************************************
+	
+MuteVoice:
+		ld		a,(CurChan)
+
+MuteDirect:
+		and		a
+		jp		nz,@1
+
+		xor		a
+		ldz		(NR12),a
+		ld		(Pri0),a
+		ret
+		
+@1:		cp		1
+		jp		nz,@2
+
+		xor		a
+		ldz		(NR22),a
+		ld		(Pri1),a
+		ret
+
+@2:		cp		2
+		jp		nz,@3
+
+		xor		a
+		ldz		(NR32),a
+		ld		(Pri2),a
+		ret
+
+@3:		xor		a
+		ldz		(NR42),a
+		ld		(Pri3),a
+		ret
+
+****************************************
+* Play volome and pitch from a channel
+* 			C = Volume
+* (PitchBend) = Pitch Bend
+****************************************
+	
+OutVoice:
+		ld		a,(CurChan)
+
+		and		a
+		jp		z,Chan1
+
+		cp		1
+		jp		z,Chan2
+
+		cp		2
+		jp		z,Chan3
+
+		jp		Chan4
+
+****************************************
+*	   Channel 1 Output Routine
+****************************************
+
+Chan1:
+
+	;Volume
+
+		xor		a
+		ldz		(NR10),a
+		
+		ld		a,%10000000
+		ldz		(NR11),a
+	
+	;Pitch bend
+	
+		ldz		a,(PitchBend)
+		ld		l,a
+		rla
+		sbc		a,a
+		ld		h,a
+		
+		add		hl,de
+		ld		e,l
+		ld		d,h
+	
+	;Pitch
+	
+		ld		a,e
+		ldz		(NR13),a		;low 8 bits
+	
+		ld		a,d
+		ldz		(NR14),A		;High 3 bits
+	
+		ldz		a,(Vol1)
+		cp		c
+		ret		z
+	
+		ld		a,c				;Volume #f
+		ldz		(Vol1),a
+	
+		swap 	a
+		ldz		(NR12),a
+	
+		ld		a,d
+		or		#80
+		ldz		(NR14),A		;High 3 bits
+		ret
+	
+****************************************
+*	   Channel 2 Output Routine
+****************************************
+
+Chan2:
+		ld		a,%10000000
+		ldz		(NR21),a
+	
+	
+	;Pitch bend
+	
+		ldz		a,(PitchBend)
+		ld		l,a
+		rla
+		sbc		a,a
+		ld		h,a
+		
+		add		hl,de
+		ld		e,l
+		ld		d,h
+			
+	;Pitch
+	
+		ld		a,e
+		ldz		(NR23),a		;low 8 bits
+	
+		ld		a,d
+		ldz		(NR24),A		;High 3 bits
+	
+		ldz		a,(Vol2)
+		cp		c
+		ret		z
+	
+		ld		a,c				;Volume #f
+		ldz		(Vol2),a
+	
+		swap 	a
+		ldz		(NR22),a
+	
+		ld		a,d
+		or		#80
+		ldz		(NR24),A		;High 3 bits
+		ret
+
+****************************************
+*	   Channel 3 Output Routine
+****************************************
+
+Chan3:
+
+		ld		a,#80
+		ldz		(NR30),a		;low 8 bits
+	
+		xor		a				; hardware-length 00
+		ldz		(nr31),a		; transfer a to nr31
+	
+	;Pitch bend
+	
+		ldz		a,(PitchBend)
+		sra		a
+	
+		ld		l,a
+		rla
+		sbc		a,a
+		ld		h,a
+		
+		add		hl,de
+		ld		e,l
+		ld		d,h
+	
+	;Pitch
+			
+		ld		a,e
+		ldz		(NR33),a		;low 8 bits
+	
+		ld		a,d
+		ldz		(NR34),a		;High 3 bits
+	
+	;Volume
+		
+		ld		b,0
+		ld		hl,VolChan3	
+		add		hl,bc
+		ld		c,(hl)
+	
+		ldz		a,(Vol3)
+		cp		c
+		ret		z
+		
+		ld		a,c
+		ldz		(Vol3),a
+	
+		ldz		(NR32),a
+	
+		ld		a,d
+		or		#80				;C0
+		ldz		(NR34),A		;High 3 bits
+		ret
+
+****************************************
+*	   Channel 4 Output Routine
+****************************************
+
+Chan4:
+		xor		a
+		ldz		(NR41),a
+	
+	;Pitch bend
+	
+		ldz		a,(PitchBend)
+		and		#c0
+		swap	a
+		sra		a
+		sra		a
+		ld		b,a
+	
+	;Pitch
+	
+		ldx		a,RealNote
+		add		a,b
+		cpl
+		inc		a
+		and		#0f
+		swap	a
+		or		5
+		ldz		(NR43),a
+	
+		ldz		a,(Vol4)
+		cp		c
+		ret		z
+		
+		ld		a,c
+		ldz		(Vol4),a
+	
+		swap	a
+		ldz		(nr42),a		;Volume
+	
+		ld		a,#80
+		ldz		(nr44),a
+	
+		ret
+
+;c0 play for length
+;80 play for ever
+
+;bit 7 start up note
+;bit 6 use counter
+

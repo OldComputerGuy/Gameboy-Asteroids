@@ -1,0 +1,735 @@
+********************************************************************************
+*		  	      		Main Game Control
+*			      TurnBased/Rounds/MultiPlayer
+*         		 Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+
+T_INTRO		EQU	1
+T_LEVEL		EQU	2
+T_OVER		EQU	3
+T_COMPLETE	EQU	4
+T_OVERMULTI	EQU	5
+		
+		MemB CurrentPlr
+
+Play_game:
+
+;		xor		a
+;		call	PlayMusic
+
+;		ld		hl,MIDI_Introb
+;		ld		d,1
+;		call	PlayMusic
+
+;---------------------------------------
+;			Sync the link
+;---------------------------------------
+
+@sync:
+
+		ld		a,(Connect)
+		and		a
+		jr		z,@ok
+
+		call	Wait_Fly
+		
+		ld		a,#ff
+		ld		(Keys),a
+		
+		call	HandleLink
+
+		ld		a,(InKeys)
+		cp		#ff
+		jr		nz,@sync
+
+@ok:
+		xor		a
+		ld		(Keys),a
+		ld		(Trigger),a
+		ld		(InTrig),a
+		ld		(InKeys),a
+
+;---------------------------------------
+
+		ld		a,1
+		ld		(ShipInit),a
+
+		ld		a,1
+		ld		(ThisLevel),a
+		ld		a,(domszone)
+		ld		(ThisZone),a
+
+		xor		a
+		ld		(ThisWeapon),a
+		ld		(ThisEnemy),a
+
+;		ld		de,BehaveBuf
+;		ld		hl,TXT_setting
+;		call	GetSettings
+
+
+		;reset game variables here
+		xor		a
+		ld		(currentplr),a
+		
+		ld		(ShipState1),a
+		ld		(ShipState2),a
+		
+	
+		
+		
+
+NextZone:
+		ld		a,(game_type)								;display zone pictures
+		cp		2						;not classic
+		
+		call	nz,Display_Zone_Picture
+;		ld		a,(ThisZone)
+;		inc		a
+;		ld		(ThisZone),a
+;		cp		6
+;		jr		nz,NextZone
+		
+		
+NextLevel:
+		ld		a,(game_type)
+		cp		2
+		jr		z,@No_music
+
+		ld		a,(ThisZone)
+		dec		a
+		ld		hl,MIDI_Az1b
+		ld		e,a
+		ld		d,0
+		add		hl,de
+
+		ld		a,(ThisLevel)
+		cp		6
+		jr		c,@ok
+		ld		a,5
+@ok:	ld		d,a
+
+		call	PlayMusic
+@no_music							;for classic else play classic tune
+		ld		a,(ThisLevel)
+		add		a,a
+		add		a,a
+		add		a,41
+		swap	a
+		ld		(seed),a
+		call	Random
+
+		call	MainInit
+		call	RunMain
+
+		xor		a
+		ld		(ShipInit),a
+		ld		(Game_Status),a
+		ld		(Game_Delay),a
+		ld		(Time),a
+		ld		(Text_Status),a
+		ld		(Text_Delay),a
+		
+		ld		a,(leveltime)
+		ld		(gametime),a
+	
+		ld		a,T_INTRO
+		ld		(Text_Status),a
+		ld		a,100
+		ld		(Text_Delay),a
+			
+		call	ForceUpdate
+
+MainLoop:
+		ld		a,(game_status)
+		and		a
+		jr		nz,@a1
+							
+		call	CheckStatusShip
+		call	CheckStatusLevel
+		call	CheckStatusTime
+
+@a1
+
+		call	RunMain					;needs to set game_status & game_delay
+		call	InGameText
+		call	Debug_text
+
+;		ld		a,(game_type)
+;		cp		2
+;		jr		z,@noslow
+;		ld		a,1
+;		ld		(DirtyBak),a
+;@noslow
+		ld		a,(demomode)
+		and		a
+		jr		z,@z1
+		
+		ld		a,(keys)
+		and		a
+		ret		nz						;exit from here
+					
+@z1
+		LD		A,(KEYS)
+		BIT   	BIT_KEY_SELECT,A		;TESTED IN FALL
+		jp		nz,Options
+
+		ld		a,(game_delay)
+		and		a
+		jr		nz,@countdown
+		jp		MainLoop
+
+@countdown:
+		dec		a
+		ld		(game_delay),a
+		jp		nz,MainLoop
+		
+		ld		a,(game_status)
+		cp		1
+		jr		z,next_round		
+		cp		2
+		jr		z,game_over
+		cp		3
+		jr		z,lost_live_turn
+
+							
+
+next_round
+						
+		ld		a,(ThisLevel)
+		inc		a
+		ld		(ThisLevel),a
+		ld		d,16
+		
+		ld		a,(game_type)
+		cp		5
+		jr		c,@nr
+
+		ld		a,(Rounds)
+		ld		d,a
+
+		
+@nr:	ld		a,(ThisLevel)
+		cp		d
+		jp		c,Nextlevel
+		
+		ld		a,1
+		ld		(ThisLevel),a
+		
+		ld		a,(game_type)
+		cp		2
+		jp		z,NextLevel					;loop classic game				
+		cp		4
+		jr		nc,Game_Finished		
+		
+		ld		a,(ThisZone)
+		inc		a
+		ld		(ThisZone),a
+		cp		6
+		jp		c,Zone_complete		
+	
+		jp		Game_Finished
+
+Lost_Live_Turn
+
+		jp		NextLevel
+
+Zone_complete
+		;end of zone text
+		jp		NextZone		
+		
+Game_Over
+		;check hiscore		
+		;display game over screen
+					
+Game_Finished
+	
+		ret
+		
+
+
+
+
+		
+;****************************
+;*
+;****************************		
+CheckStatusShip
+		ld		a,(game_status)
+		and		a
+		ret		nz
+
+		ld		a,(game_type)
+		cp		3
+		jp		c,@single_player
+		jp		z,@turnbased
+
+@Link_game
+		ld		a,1
+		ld		(ShipPoll),a
+		
+		ld		a,(ShipState1)
+		cp		State_NoShips
+		ret		nz
+
+		ld		a,(ShipState2)
+		cp		State_NoShips
+		ret		nz
+
+;link gameover
+		ld		a,2
+		ld		(game_status),a	;text changes here
+		ld		a,T_OVER
+		ld		(text_status),a
+		ld		a,100
+		ld		(game_delay),a
+		ld		(text_delay),a
+		ret
+		
+@turnbased
+		ld		a,(ShipState1)
+		cp		State_Dead
+		jr		z,@swap_plr		
+		
+		cp		State_NoShips
+		ret		nz
+		
+@killplr	
+		
+		xor		a
+		ld		(ShipState1),a			;clear
+		
+		ld		a,(NumactivePlys)
+		and		a
+		jr		z,@kover
+		xor		a
+		ld		(NumactivePlys),a
+				
+		ld		a,(CurrentPlr)		
+		ld		hl,P1Buf
+		and		a
+		jr		z,@kw3
+		ld		hl,P2Buf	
+@kw3	xor		a
+		call	GetShipVar				;put into globals
+		
+		ld		a,(CurrentPlr)
+		xor		1
+		ld		(CurrentPlr),a			;swap player
+	
+		ld		hl,P1Buf
+		and		a
+		jr		z,@kw4
+		ld		hl,P2Buf	
+@kw4	xor		a
+		call	SetShipVar			;get from globals
+		
+
+@kover		
+		ld		a,2					;game over out of ships
+		ld		(game_status),a
+		ld		a,T_OVERMULTI
+		ld		(text_status),a
+		ld		a,100
+		ld		(game_delay),a
+		ld		(text_delay),a
+		ret
+					
+			
+@swap_plr
+		xor		a
+		ld		(ShipState1),a			;clear
+		
+		ld		a,(CurrentPlr)		
+		
+		ld		hl,P1Buf
+		and		a
+		jr		z,@w3
+		ld		hl,P2Buf	
+@w3		xor		a
+		call	GetShipVar				;put into globals
+
+		ld		a,(NumactivePlys)
+		and		a
+		jr		z,@sw					;only one
+		
+@ww1	ld		a,(CurrentPlr)
+		xor		1
+		ld		(CurrentPlr),a			;swap player
+		ld		hl,P1Buf
+		and		a
+		jr		z,@w4
+		ld		hl,P2Buf	
+@w4		xor		a
+		call	SetShipVar				;get from globals
+				
+@sw		
+		ld	a,3
+		ld	(Game_Status),a
+		ld	a,10
+		ld	(Game_Delay),a		
+;		ld		a,1
+;		ld		(ShipPoll),a
+		ret				
+
+
+@single_player
+		ld		a,(ShipState1)
+		cp		State_NoShips
+		jr		nz,@ss1
+		ld		a,2
+		ld		(game_status),a
+		ld		a,T_OVER
+		ld		(text_status),a
+		ld		a,100
+		ld		(game_delay),a
+		ld		(text_delay),a
+		ret
+		
+@ss1	cp		State_Dead
+		ret		nz
+
+		ld		a,1
+		ld		(ShipPoll),a
+
+		ld		a,(demomode)
+		and		a
+		ret		z
+		pop		hl				;return address		
+		ret						;goes back to menu
+
+;****************************
+;*
+;****************************
+		
+CheckStatusLevel
+
+		ld		a,(RockCount)
+		and		a
+		ret		nz
+
+		ld		a,(game_type)
+		cp		6					;tag
+		ret		z
+		
+;LevClear
+		ld		a,1
+		ld		(game_status),a
+		ld		(EndLevel),a
+		ld		a,100
+		ld		(game_delay),a
+		ld		a,(game_type)
+		cp		2
+		ret		z					;classic game
+		
+		ld		a,100
+		ld		(text_delay),a
+		ld		a,T_LEVEL
+		ld		(text_status),a
+		ret		
+;***********************************
+;*
+;***********************************
+
+CheckStatusTime						;and count down
+
+		
+		ld		a,(game_type)
+		cp		5
+		ret		c
+		
+		ld		a,(time)
+		and		63
+		cp		63
+		ret		nz
+		
+		ld		a,(gametime)
+		and		a
+		jr		z,@over
+		
+		dec		a
+		ld		(gametime),a
+		ret
+		
+		
+;print panel here for timer
+
+		call	print	
+		db		at,0,17,"%b"
+		dw		gametime
+		db		stop		
+		
+		ret
+		
+@over
+		ld		a,1
+		ld		(game_status),a
+		ld		(EndLevel),a
+
+		ld		a,100
+		ld		(game_delay),a
+		ld		(text_delay),a
+		ld		e,T_LEVEL
+		ld		a,(rounds)
+		ld		d,a
+		ld		a,(Thislevel)
+		inc		a
+		cp		d
+		jr		c,@a100
+		ld		e,T_OVERMULTI
+		
+
+@a100	ld		a,e
+		ld		(text_status),a
+		ret			
+
+
+InGameText
+
+		ld		a,(demomode)
+		and		a
+		jr		z,@b1
+		ld		a,(time)
+		and		16
+		jr		nz,@b1
+		call	print
+		db		at,7,8,"DEMO"
+		db		stop
+@b1		
+
+		ld		a,(Text_Status)
+		and		a
+		ret		z
+		ld		e,a
+		
+		ld		a,(Text_Delay)
+		dec		a
+		ld		(Text_Delay),a
+		jr		nz,@a1
+		ld		(Text_Status),a
+		ret
+		
+@a1:	ld		a,e
+		cp		T_INTRO
+		jr		z,Intro_text
+		cp		T_LEVEL
+		jr		z,Level_text
+		cp		T_OVER
+		jr		z,GameOver_text
+		cp		T_COMPLETE
+		jr		z,GameComplete_text
+		cp		T_OVERMULTI
+		jr		z,GameOver_textM
+		ret
+				
+GameComplete_text
+		call	print		
+		db		at,11,3,"GAME COMPLETE"
+		db		stop
+		ret
+
+GameOver_textM
+		call	GameOver_text
+		jp		MScores_text
+		
+GameOver_text
+		call	print		
+		db		at,11,5,"GAME OVER"
+		db		stop
+		ret
+				
+Level_text
+		call	print		
+		db		at,11,3,"LEVEL COMPLETE"
+		db		stop
+		ld		a,(game_type)
+		cp		4						;link only
+		call	nc,MScores_text
+		ret
+		
+Intro_text
+		ld		a,(Game_type)
+		cp		2
+		ret	z					;classic
+		call	@level
+		ld		a,(Game_Type)
+		cp		5
+		call	c,@Zone			;not for special link games
+		
+		ld		a,(Game_type)		
+		cp		3				;turn
+		jr		z,@turn
+					
+		cp		4				;link games
+		ret		c
+
+		jp		MScores_text
+		
+					
+
+@turn	ld		a,(CurrentPlr)
+		and		a
+		jr		nz,@two
+		
+		call	print	
+		db		at,7,5,"PLAYER ONE"
+		db		stop
+		ret
+		
+@two	call	print	
+		db		at,7,5,"PLAYER TWO"
+		db		stop
+		ret
+		
+@Level	
+		call	print		
+		db		at,14,6,"LEVEL ","%b"
+		dw		ThisLevel		
+		db		stop
+		ret
+@Zone		
+		call	print		
+		db		at,12,6,"ZONE ","%b"
+		dw		ThisZone		
+		db		stop
+		ret
+
+MScores_text	
+		call	print		
+		db		at,7,1,"PLAYER 1"
+		db		at,9,2,"%w"
+		dw		PScore1
+		db		at,9,7,"00"
+			
+		db		at,7,11,"PLAYER 2"
+		db		at,9,11,"%w"
+		dw		PScore2
+		db		at,9,16,"00"
+		db		stop
+		ret				
+	
+Debug_text
+		ret
+		
+		call	print
+		db		at,2,0,"%b"
+		dw		game_type
+		
+		db		at,3,0,"%b"
+		dw		game_status
+		
+		db		at,4,0,"%b"
+		dw		gametime
+		
+		db		at,5,0,"%b"
+		dw		rounds
+				
+		db		stop
+		
+		
+		ret
+
+****************************************
+*	 Turnbased Set Ships Variables
+*	   A = Ship to set (0 = Ship1)
+*	  HL = points to data to copy
+*
+* 		 ShipType,Lives,Score
+****************************************
+		
+SetShipVar:
+		and		a
+		jr		nz,@Remote
+
+		ld		a,(hli)			;Ship Type
+		stba	Type,0
+
+		ld		a,(hli)			;lives
+		stba	Ships,0
+
+		ld		a,(hli)
+		stba	Score,0
+		
+		ld		a,(hli)
+		stba	ScoreH,0		
+		
+@globals
+		ld		a,(hli)			;level
+		ld		(ThisLevel),a
+		ld		a,(hli)			;zone
+		ld		(ThisZone),a
+		ld		a,(hli)			;diff
+		ld		(game_diff),a
+		ld		a,(hli)			;musicvol
+		ld		(music_vol),a
+		ld		a,(hli)
+		ld		(sfx_vol),a
+		ret
+
+@Remote:
+		ld		a,(hli)			;Ship Type
+		stba	Type,1
+
+		ld		a,(hli)			;lives
+		stba	Ships,1
+
+		ld		a,(hli)
+		stba	Score,1
+		
+		ld		a,(hli)
+		stba	ScoreH,1		
+		jr		@globals
+
+****************************************
+*	 Turnbased Get Ships Variables
+*	   A = Ship to set (0 = Ship1)
+*	  HL = points to read area
+*
+* 		 ShipType,Lives,Score
+****************************************
+
+GetShipVar:
+		and		a
+		jr		nz,@Remote
+		
+		ldba	Type,0
+		ld		(hli),a
+
+		ldba	Ships,0
+		ld		(hli),a
+
+		ldba	Score,0
+		ld		(hli),a
+
+		ldba	ScoreH,0
+		ld		(hli),a
+		
+@globals
+
+		ld		a,(ThisLevel)
+		ld		(hli),a			
+		ld		a,(ThisZone)
+		ld		(hli),a			
+		ld		a,(game_diff)
+		ld		(hli),a
+		ld		a,(music_vol)
+		ld		(hli),a
+		ld		a,(sfx_vol)
+		ld		(hli),a				
+		ret
+
+@Remote:
+		ldba	Type,1
+		ld		(hli),a
+
+		ldba	Ships,1
+		ld		(hli),a
+
+		ldba	Score,1
+		ld		(hli),a
+
+		ldba	ScoreH,1
+		ld		(hli),a
+		ret
+

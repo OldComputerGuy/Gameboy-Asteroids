@@ -1,0 +1,2678 @@
+********************************************************************************
+*		  	      		GameTasker GameBoy Engine
+*			      
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+ROMBUILD	= 0			;IF 1 THEN MAKE ROM
+MUSICROM	= 0
+
+****************************************
+*	        MACROS
+****************************************
+		
+		SEND
+
+ORGBIN	MACRO
+		;org	\1
+		;incbin	\2
+		ENDM
+
+INDEXBASE MACRO
+IBASE	= \1
+		ENDM
+
+EQUINC	MACRO
+\1		= NUM
+NUM		= NUM + 1
+		ENDM
+
+SAME	MACRO
+\1		= NUM-1
+		ENDM
+
+EQUDEC	MACRO
+\1		= NUM
+NUM		= NUM - 1
+		ENDM
+
+EQUPOW	MACRO
+\1		= POW
+\1_BIT	= NUM
+NUM		= NUM + 1
+POW		= POW * 2
+		ENDM
+
+BOMB	MACRO
+		LD	A,\1
+		JP	BOMBOUT
+		ENDM
+
+****************************************
+*       SPRITE CONTROL MACRO'S
+****************************************
+
+LDBA	MACRO				;LDBA	VAR,BUF
+		LD	A,(TaskBuffer+\2*BUFLEN+\1)
+		ENDM		
+
+STBA	MACRO				;STBA	VAR,BUF
+		LD	(TaskBuffer+\2*BUFLEN+\1),A
+		ENDM		
+
+INX		MACRO				;INX XCOORD
+		LD	HL,IBASE+\1
+		INC	(HL)
+		ENDM
+
+DEX		MACRO				;DEX XCOORD
+		LD	HL,IBASE+\1
+		DEC	(HL)
+		ENDM
+
+LDX		MACRO				;LDX A,TASKADDL
+		IFS	[\1][A]
+		LDZ	A,(IBASE+\2)
+		ELSE
+		LDZ	A,(IBASE+\2)
+		LD	\1,A
+		ENDIF
+		ENDM
+
+STX		MACRO			;STX TASKADDL,A
+		IFS	[\2][A]
+		LDZ	(IBASE+\1),A
+		ELSE
+		LD	A,\2
+		LDZ	(IBASE+\1),A
+		ENDIF
+		ENDM
+
+LDW		MACRO			;LDW  H,L,XCOORD
+		LDX	\2,\3
+		LDX	\1,\3+1
+		ENDM
+
+STW		MACRO			;STW  H,L,XCOORD
+		STX	\3,\2
+		STX	\3+1,\1
+		ENDM
+
+STN		MACRO			;STW  H,L,XCOORD
+		STX	\1,<\2
+		STX	\1+1,>\2
+		ENDM
+
+TASK	MACRO
+		LD	HL,TaskBuffer+(BufLen*(\1))
+		ENDM
+
+MOVE	MACRO
+		IFS	[\1][$]
+		LD	A,<@HERE
+		LDZ	(IBASE+TASKADDL),A
+		LD	A,>@HERE
+		LDZ	(IBASE+TASKADDH),A
+		ELSE
+		STX	TASKADDL,<\1
+		STX	TASKADDH,>\1
+		ENDIF
+@HERE		
+		ENDM
+
+KILLTASK Macro
+;		move #feff
+		stx	TaskAddH,#fc
+		endm
+
+SLEEP	MACRO
+		LD	A,<@HERE
+		LDZ	(IBASE+TASKADDL),A
+		LD	A,>@HERE
+		LDZ	(IBASE+TASKADDH),A
+		RET
+@HERE		
+		ENDM
+		
+****************************************
+*     Sequence control macroes
+****************************************
+
+LDS		MACRO					;LDS A,TASKADDL
+		IFS	[\1][A]
+		LDZ	A,(SeqBase+\2)
+		ELSE
+		LDZ	A,(SeqBase+\2)
+		LD	\1,A
+		ENDIF
+		ENDM
+
+STS		MACRO					;STS TASKADDL,A
+		IFS	[\2][A]
+		LDZ	(SeqBase+\1),A
+		ELSE
+		LD	A,\2
+		LDZ	(SeqBase+\1),A
+		ENDIF
+		ENDM
+
+SEQ		MACRO
+		LD		HL,SeqBuffer+(SeqBufLen*\1)
+		ENDM
+
+****************************************
+*
+****************************************
+
+SBT		MACRO
+		IFS	[\1][HL]
+		IFS	[\2][DE]
+		LD	A,L
+		SUB	E
+		LD	L,A
+		LD	A,H
+		SBC	A,D
+		LD	H,A
+		ENDIF
+		IFS	[\2][BC]
+		LD	A,L
+		SUB	C
+		LD	L,A
+		LD	A,H
+		SBC	A,B
+		LD	H,A
+		ENDIF
+		ENDIF
+
+		IFS	[\1][DE]
+		IFS	[\2][BC]
+		LD	A,E
+		SUB	C
+		LD	E,A
+		LD	A,D
+		SBC	A,B
+		LD	D,A
+		ENDIF
+		IFS	[\2][HL]
+		LD	A,E
+		SUB	L
+		LD	E,A
+		LD	A,D
+		SBC	A,H
+		LD	D,A
+		ENDIF
+		ENDIF
+
+		IFS	[\1][BC]
+		IFS	[\2][DE]
+		LD	A,C
+		SUB	E
+		LD	C,A
+		LD	A,B
+		SBC	A,D
+		LD	B,A
+		ENDIF
+		IFS	[\2][HL]
+		LD	A,C
+		SUB	L
+		LD	C,A
+		LD	A,B
+		SBC	A,H
+		LD	B,A
+		ENDIF
+		ENDIF
+		ENDM	
+
+ADT		MACRO
+
+		IFS	[\1][HL]
+
+			IFS	[\2][DE]
+				ADD	HL,DE
+			ENDIF
+
+			IFS	[\2][BC]
+				ADD	HL,BC
+			ENDIF
+
+			IFS	[\2][NN]	
+				LD	A,L
+				ADD	A,>/3
+				LD	L,A
+				LD	A,H
+				ADC	A,</3
+				LD	H,A
+			ENDIF
+	
+
+		ENDIF
+
+		IFS	[\1][DE]
+			IFS	[\2][BC]
+				LD	A,E
+				ADD	A,C
+				LD	E,A
+				LD	A,D
+				ADC	A,B
+				LD	D,A
+			ENDIF
+
+			IFS	[\2][HL]
+				LD	A,E
+				ADD	A,L
+				LD	E,A
+				LD	A,D
+				ADC	A,H
+				LD	D,A
+			ENDIF
+			IFS	[\2][NN]	
+				LD	A,E
+				ADD	A,>/3
+				LD	E,A
+				LD	A,D
+				ADC	A,</3
+				LD	D,A
+			ENDIF
+	
+		ENDIF
+
+		IFS	[\1][BC]
+			IFS	[\2][DE]
+				LD	A,C
+				ADD	A,E
+				LD	C,A
+				LD	A,B
+				ADC	A,D
+				LD	B,A
+			ENDIF
+			IFS	[\2][HL]
+				LD	A,C
+				ADD	A,L
+				LD	C,A
+				LD	A,B
+				ADC	A,H
+				LD	B,A
+			ENDIF
+
+			IFS	[\2][NN]	
+				LD	A,C
+				ADD	A,>/3
+				LD	C,A
+				LD	A,B
+				ADC	A,</3
+				LD	B,A
+			ENDIF
+		ENDIF
+		ENDM	
+
+;CMP		MACRO
+;		IFS	[\1][HL]
+;		IFS	[\2][DE]
+;		LD	A,L
+;		SUB	E
+;		LD	A,H
+;		SBC	A,D
+;		ENDIF
+;		IFS	[\2][BC]
+;		LD	A,L
+;		SUB	C
+;		LD	A,H
+;		SBC	A,B
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\1][DE]
+;		IFS	[\2][BC]
+;		LD	A,E
+;		SUB	C
+;		LD	A,D
+;		SBC	A,B
+;		ENDIF
+;		IFS	[\2][HL]
+;		LD	A,E
+;		SUB	L
+;		LD	A,D
+;		SBC	A,H
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\1][BC]
+;		IFS	[\2][DE]
+;		LD	A,C
+;		SUB	E
+;		LD	A,B
+;		SBC	A,D
+;		ENDIF
+;		IFS	[\2][HL]
+;		LD	A,C
+;		SUB	L
+;		LD	A,B
+;		SBC	A,H
+;		ENDIF
+;		ENDIF
+;		ENDM	
+
+LDM		MACRO
+		IFS	[\1][HL]
+		LD	A,(\2)
+		LD	L,A
+		LD	A,(\2+1)
+		LD	H,A
+		ENDIF
+
+		IFS	[\1][DE]
+		LD	A,(\2)
+		LD	E,A
+		LD	A,(\2+1)
+		LD	D,A
+		ENDIF
+
+		IFS	[\1][BC]
+		LD	A,(\2)
+		LD	C,A
+		LD	A,(\2+1)
+		LD	B,A
+		ENDIF
+		ENDM
+
+STM		MACRO
+		IFS	[\2][HL]
+		LD	A,L
+		LD	(\1),A
+		LD	A,H
+		LD	(\1+1),A
+		ENDIF
+
+		IFS	[\2][DE]
+		LD	A,E
+		LD	(\1),A
+		LD	A,D
+		LD	(\1+1),A
+		ENDIF
+
+		IFS	[\2][BC]
+		LD	A,C
+		LD	(\1),A
+		LD	A,B
+		LD	(\1+1),A
+		ENDIF
+		ENDM
+
+****************************************
+*	     16B BIT TEST
+****************************************
+
+;BT		MACRO				;EG BT 9,HL
+;
+;		IF	\1>16
+;		ERROR	BIT VALUE TOO LARGE !!
+;		ENDIF
+;
+;		IFS	[\2][HL]
+;		IF	\1>7
+;;		BIT	\1-8,H
+;		ELSE
+;		BIT	\1,L
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\2][DE]
+;		IF	\1>7
+;		BIT	\1-8,D
+;		ELSE
+;		BIT	\1,E
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\2][BC]
+;		IF	\1>7
+;		BIT	\1-8,B
+;		ELSE
+;		BIT	\1,C
+;		ENDIF
+;		ENDIF
+;		ENDM
+
+****************************************
+*
+****************************************
+
+;SETW	MACRO
+;
+;		IF	\1>16
+;		ERROR	BIT VALUE TOO LARGE !!
+;		ENDIF
+;
+;		IFS	[\2][HL]
+;		IF	\1>7
+;		SET	\1-8,H
+;		ELSE
+;		SET	\1,L
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\2][DE]
+;		IF	\1>7
+;		SET	\1-8,D
+;		ELSE
+;		SET	\1,E
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\2][BC]
+;		IF	\1>7
+;		SET	\1-8,B
+;		ELSE
+;		SET	\1,C
+;		ENDIF
+;		ENDIF
+;		ENDM
+
+****************************************
+*
+****************************************
+
+;RESW	MACRO
+;
+;		IF	\1>16
+;		ERROR	BIT VALUE TOO LARGE !!
+;		ENDIF
+;
+;		IFS	[\2][HL]
+;		IF	\1>7
+;		RES	\1-8,H
+;		ELSE
+;		RES	\1,L
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\2][DE]
+;		IF	\1>7
+;		RES	\1-8,D
+;		ELSE
+;		RES	\1,E
+;		ENDIF
+;		ENDIF
+;
+;		IFS	[\2][BC]
+;		IF	\1>7
+;		RES	\1-8,B
+;		ELSE
+;		RES	\1,C
+;		ENDIF
+;		ENDIF
+;		ENDM
+;
+;		endif
+
+****************************************
+*       MEMORY CONTROL MACRO'S
+****************************************
+
+MEMB	MACRO
+\1		EQU	MBASE
+MBASE		=	MBASE + 1
+		IF MBASE > #DE00
+		ERROR Warning, Low on RAM
+		ENDIF
+
+		ENDM
+
+MEMW	MACRO
+\1		EQU	MBASE
+MBASE		=	MBASE + 2
+		IF MBASE > #DE00
+		ERROR Warning, Low on RAM
+		ENDIF
+		ENDM
+
+MEMS	MACRO
+\1		EQU	MBASE
+MBASE		=	MBASE + \2
+		IF MBASE > #DE00
+		ERROR Warning, Low on RAM
+		ENDIF
+		ENDM
+
+FMEMB	MACRO
+\1		EQU	FRAM
+FRAM		=	FRAM + 1
+		IF FRAM = #FFFF
+		ERROR OUT OF HIGH MEMORY
+		ENDIF
+		ENDM
+
+FMEMW	MACRO
+\1		EQU	FRAM
+FRAM		=	FRAM + 2
+		IF FRAM > #FFFE
+		ERROR OUT OF HIGH MEMORY
+		ENDIF
+		ENDM
+
+FMEMS	MACRO
+\1		EQU	FRAM
+FRAM		=	FRAM + \2
+		IF FRAM > #FFF0
+		ERROR LOW ON HIGH MEMORY
+		ENDIF
+		ENDM
+
+RET1	MACRO
+		ld	a,1
+		SetBank
+		ret
+		ENDM
+
+SETBANK1	MACRO
+			ld	a,1
+			SetBank
+			ENDM
+
+SETBANK	MACRO
+		LD	(LBANK),A
+		LD	(BANKSEL),A
+		XOR	A
+		LD	(BANKSELH),A
+
+		IF	$>#3FFF
+		ERROR Cannot SETBANK above 16k
+		ENDIF
+
+		ENDM
+
+PUSHBANK	MACRO
+			LD	A,(LBANK)
+			PUSH AF
+			ENDM
+
+
+POPBANK		MACRO
+			POP	AF
+			SETBANK
+			ENDM
+
+WaitVideo	MACRO
+@LP			LDZ	A,(STAT)
+			AND	2
+			JR	NZ,@LP
+			ENDM
+
+BRK			MACRO
+			CALL	MON_ENTER		
+			ENDM
+
+bug			macro
+			db	#f4
+			endm
+
+BugChar		macro
+			db	#e3
+			endm
+
+AScore		macro
+			ld		a,(\1)
+			ld		de,\2 		;/ 100
+			call	AddScore
+			endm
+
+****************************************
+*		 EQUATES
+****************************************
+
+Type_GBC_null	EQU 0
+Type_GBC_spr	EQU 1
+Type_GB_spr		EQU 2
+Type_GBC_bak	EQU 3
+Type_GB_bak		EQU 4
+Type_GBC_pal	EQU 5
+Type_GB_pal		EQU 6
+Type_BGBC_pal	EQU 7
+Type_BGB_pal	EQU 8
+Type_GBC_text	EQU 9
+Type_GBC_hex	EQU	10
+Type_GB_seq		EQU	11
+Type_GB_pos		EQU	12
+Type_GB_ani		EQU	13
+Type_GB_snd		EQU 14
+Type_GB_midi	EQU 15
+
+State_Appear	= 1
+State_Alive		= 2
+State_Dead		= 3
+State_NoShips	= 4
+
+
+KEY_A			EQU	1
+KEY_B			EQU	2
+KEY_SELECT		EQU	4
+KEY_START		EQU	8
+KEY_RIGHT		EQU	16
+KEY_LEFT		EQU	32
+KEY_UP			EQU	64
+KEY_DOWN		EQU	128
+KEY_RESET		EQU	KEY_A+KEY_B+KEY_SELECT+KEY_START
+
+BIT_KEY_A		EQU	0
+BIT_KEY_B		EQU	1
+BIT_KEY_SELECT	EQU	2
+BIT_KEY_START	EQU	3
+BIT_KEY_RIGHT	EQU	4
+BIT_KEY_LEFT	EQU	5
+BIT_KEY_UP		EQU	6
+BIT_KEY_DOWN	EQU	7
+
+
+NUM		= 	0
+
+		EQUINC	SC_0
+		EQUINC	SC_100
+		EQUINC	SC_200
+		EQUINC	SC_500
+		EQUINC	SC_1000
+		EQUINC	SC_2000
+		EQUINC	SC_5000
+		EQUINC	SC_10000
+		EQUINC	SC_20000
+		EQUINC	SC_50000
+		EQUINC	SC_100000
+		EQUINC	SC_200000
+		EQUINC	SC_500000
+		EQUINC	SC_1000000
+
+STOP		=	0
+AT		=	1
+BOX		=	2
+
+BANKSEL		=	#2000				;BANK SELECT REGISTER LOW 8 BITS
+BANKSELH	=	#3000				;BANK SELECT REGISTER HIGH 1 BIT
+
+****************************************
+*          CONTROL REGISTER
+****************************************
+
+P1		=	#FF00		;KEY PORT
+
+SB		=	#FF01		;SERIAL DATA
+SC		=	#FF02		;SERIAL CONTROL
+
+DIV		=	#FF04		;DIVIDER
+TIMA	=	#FF05		;TIMER
+TMA		=	#FF06		;TIMER
+TAC		=	#FF07		;TIMER CONTROLL
+
+IF		=	#FF0F		;INTERRUPT FLAG
+IE		=	#FFFF		;INTERRUPT ENABLE FLAG
+
+LCDC	=	#FF40		;LCD CONTROLL
+STAT	=	#FF41		;LCDC STATUS
+
+SCY		=	#FF42		;SCROLL X
+SCX		=	#FF43		;SCROLL Y
+
+LY		=	#FF44		;LCDC Y
+LYC		=	#FF45		;LCDC Y COMPARE
+
+DMA		=	#FF46		;DMA CONTROL
+
+BGP		=	#FF47		;BAK PALET
+OBP0	=	#FF48		;OBJ 0 PALET
+OBP1	=	#FF49		;OBJ 1 PALET
+
+WY		=	#FF4A		;WINDOW X
+WX		=	#FF4B		;WINDOW Y
+
+KEY1	=	#ff4d
+
+BCPS	=	#ff68		;BackGroup Palette
+BCPD	=	#ff69
+
+OCPS	=	#ff6a		;Object Palette
+OCPD	=	#ff6b
+
+VBK		=	#FF4F
+SVBK	=	#FF70
+RP		=	#FF56
+
+HDMA1	=	#FF51	;DMA transfer origin specification (high order)
+HDMA2	=	#FF52	;DMA transfer origin specification (low order)
+HDMA3	=	#FF53	;DMA transfer destination specification (high order)
+HDMA4	=	#FF54	;DMA transfer destination specification (low order)
+HDMA5	=	#FF55	;DMA transfer start and transfer size
+
+****************************************
+*          Sound Registers
+****************************************
+
+NR10	=	#FF10	;Sound 1 Mode Registers
+NR11	=	#FF11
+NR12	=	#FF12
+NR13	=	#FF13
+NR14	=	#FF14
+
+NR21	=	#FF16	;Sound 2 Mode Registers
+NR22	=	#FF17
+NR23	=	#FF18
+NR24	=	#FF19
+
+NR30	=	#FF1A	;Sound 3 Mode Registers
+NR31	=	#FF1B
+NR32	=	#FF1C
+NR33	=	#FF1D
+NR34	=	#FF1E
+
+NR41	=	#FF20	;Sound 4 Mode Registers
+NR42	=	#FF21
+NR43	=	#FF22
+NR44	=	#FF23
+
+NR50	=	#FF24	;Sound Control Registers
+NR51	=	#FF25
+NR52	=	#FF26
+
+WAVERAM	=	#FF30	;Wave Pattern RAM Start address
+
+****************************************
+*		  Ram/Rom Registers
+****************************************
+
+RAMG	equ	#0000		;External expansion memory setting register (anywhere between 0000~1FFF)
+						;#00: Disable RAM access (data protection), $0A: Enable
+
+ROMB0	equ	#2000		;ROM bank low-order register (anywhere between 2000~2FFF)
+ROMB1	equ	#3000		;ROM bank high-order register (anywhere between 3000~3FFF)
+RAMB	equ	#4000		;RAM bank register (anywhere between 4000~5FFF)
+
+****************************************
+*          RAM ALLOCATION
+****************************************
+
+MBASE		=	#C000			;START OF NORMAL RAM
+FRAM		=	#FF8A			;START OF FASTRAM
+
+****************************************
+*	  TASK BUFFER EQUATES
+****************************************
+
+NUM		= 0
+
+		EQUINC	TASKADDL		;TASK EXEC ADDRESS (LOW/HIGH)
+		EQUINC	TASKADDH		
+		EQUINC	OWNER
+
+		EQUINC	XCOORD			;XCOORD	Fraction
+		EQUINC	XCOORDH			;XCOORDH real coord
+
+		EQUINC	YCOORD			;YCOORD Fraction
+		EQUINC	YCOORDH			;YCOORDH real coord
+
+		EQUINC	XVEL			;X VELOCITY
+		EQUINC	XVELH			;X VELOCITY
+
+		EQUINC	YVEL			;Y VELOCITY
+		EQUINC	YVELH			;Y VELOCITY
+
+		EQUINC	ANGLE			;angle for ship
+		SAME	TIMER
+
+	    EQUINC	COUNT			;A Counter
+
+	    EQUINC	TYPE			;A Type
+		SAME	HOMETASK
+
+		EQUINC	ANIM			;Store for sequence handle
+		EQUINC	ANIMH
+
+; Extra Variables here
+
+	    EQUINC	SIZE			;A Size
+		SAME	COUNT2
+		SAME	ShipMode
+
+	    EQUINC	ModeTime
+	    EQUINC	BACKCHAN		;Back Channel for ship
+
+	    EQUINC	SeqOvl			;Ship Seq Overley handle
+	    EQUINC	SeqOvlH
+	    EQUINC	SeqOvlFlag		;Overlay type
+
+	    EQUINC	RetAdd			;Return address for calling
+	    EQUINC	RetAddH			;Seq.
+	    
+	    EQUINC	WideTime		;Wide Shot Time (Wide shot)
+		SAME	RegenCount
+
+	    EQUINC	B_Active		;Active Weapon
+
+	    EQUINC	B_Weapon		;Ship A Weapon
+		SAME	RockTime
+
+	    EQUINC	B_Count			;Ship A Weapon Count
+	    SAME	FTime			;Enemy Timer
+
+	    EQUINC	Parent			;Parent task number
+
+	    EQUINC	Score			;Not used
+		SAME	RegenTime		;Enemy turn rate
+
+	    EQUINC	ScoreH			;Not used
+		SAME	AstrCount
+
+	    EQUINC	Ships			;Not used
+	    SAME	RockSpd		;Enemy Fire Rate 
+	    SAME	DispOn			;FT display flag 
+	    
+	    EQUINC	Remote			;Not used
+		SAME	RockRng
+
+	    EQUINC	DefCount		;Not used
+		SAME	EnemyRegion
+		SAME	RockRegion
+
+;-------------------------------
+
+		EQUINC	BUFLEN			;TOTAL BUFFER LENGTH
+
+MAXSPR		EQU	#0400/BUFLEN	;MAXIMUM AMOUNT OF SPRITES
+MAXUSED		EQU	MAXSPR-1
+LASTUSED	EQU MAXUSED-1
+
+****************************************
+*	  SEQUENCE BUFFER EQUATES
+****************************************
+
+NUM		= 0
+
+		EquInc	SeqPtr
+		EquInc	SeqPtrH
+		
+		EquInc	SeqBank
+
+		EquInc	SeqLoopPtr
+		EquInc	SeqLoopPtrH
+
+		EquInc	Seq_Tempo
+		EquInc	Seq_Timer
+
+		EquInc	Seq_Group
+
+		EquInc	SeqBufLen			;Total buffe length
+
+MaxSeq		EQU	512/SeqBufLen		;Maximum amount of Sequences
+MaxSeqUsed	EQU	MaxSeq-1
+
+****************************************
+*	BIT SETTING
+****************************************
+
+DISABLE		EQU	128			;SPRITE DISABLED
+DISABLEBIT	EQU	7
+
+********************************************************************************
+*			      RAM ALLOCATION
+********************************************************************************
+
+		MEMS	ScrBuf, #300		;Background copy work screen
+		MEMS	CopyBuf,#300		;Background copy
+
+		MEMS	TaskBuffer,#400		;Task buffers
+		MEMS	TaskList,#100
+		MEMS	SeqBuffer,#200		;Sequence buffers
+		MEMS	ObjRam,#100			;OAM ram copy area
+		MEMS	Remap,#100			;key remap table
+
+;Collision Buffers
+
+		MEMS	Col_First,#100		;First Entry
+		MEMS	Col_Last,#100		;Last Entry
+		MEMS	Col_StartX,#100		;Start_X Coord
+		MEMS	Col_EndX,#100		;End_X Coord
+		MEMS	Col_StartY,#100		;Start_Y Coord
+		MEMS	Col_EndY,#100		;End_Y Coord
+		MEMS	Col_Task,#100		;Task number
+		MEMS	Col_Next,#100		;Next Bucket
+
+		MEMS	HitList,#300
+		MEMW	HListPtr
+
+		MemS	StrMem,360			;String transfer mem
+
+		MEMB	KEYS				;THIS GAMEBOYS KEYS
+		MEMB	TRIGGER				;THIS GAMEBOYS TRIGGER
+		MEMB	ORKEYS
+
+		MEMW	SCRADD
+		MEMW	CHRADDL
+		MEMW	CHRADDH
+		MEMW	CHRBANK
+
+		MEMB	TIME
+
+		MemW	LastBakRes
+		MEMB	DirtyBak
+
+		MEMB	SEED			;RANDOM SEED
+		MEMB	LASTSEED		;RANDOM SEED
+
+		MEMB	VBLFLAG,0
+		MEMB	OBJCOUNT
+
+		MEMB	ThisTask		;Current Task Number
+		
+		MEMB	DMA_GO
+
+		MEMB	INBYTE
+		MEMB	SIOFLAG
+
+****************************************
+*	 VARS USED BY UTIL PROGS
+****************************************
+
+		MEMB	REGA
+		MEMW	REGHL
+		MEMW	REGDE
+		MEMW	REGBC
+		MEMW	REGAF
+		MEMW	REGSP
+
+		MEMB	ERRORNUM
+		MEMB	RET_H
+		MEMB	RET_L
+
+ENDMEM	EQU		MBASE
+		
+****************************************
+*      FAST MEMORY RAM ALLOCATIONS
+****************************************
+
+		FMEMB	R0			;FAST TEMP MEM
+		FMEMB	R1
+		FMEMB	R2
+		FMEMB	R3
+		FMEMB	R4
+		FMEMB	R5
+		FMEMB	R6
+		FMEMB	R7
+
+		FMEMB	ObjPtr
+		FMEMB	SprPtr
+		FMEMB	SprPtrH
+		FMEMB	SprNum
+
+TASKBASE	EQU	FRAM
+		FMEMS	SPRDAT,BUFLEN			;Fast sprite buffer
+
+SEQBASE		EQU	FRAM
+		FMEMS	SEQDAT,SeqBufLen		;Fast Sequence buffer
+
+********************************************************************************
+*			  END OF RAM ALLOCATION
+********************************************************************************
+
+		IndexBase TaskBase
+
+STACK		=	#DFFD			;TOP OF WORKRAM
+CGBFlag		=	#DFFE
+LBANK		=	#DFFF			;LAST BANK
+
+****************************************
+*   TABLE LOCATION AND BANK EQUATES
+****************************************
+
+ResList		equ	#24000
+ResBank		EQU	ResList/#10000	;no touchey touchey
+
+****************************************
+*    ANIMLIST NOW FOLLOWS WORDLIST
+****************************************
+
+		INCLUDE GTDef.h
+
+****************************************
+*            RST 0 VECTOR
+****************************************
+
+;		ORG	#00
+;		RET
+
+****************************************
+*            DONGLE INTERRUPT
+****************************************
+
+;		ORG	#38
+;		ret
+
+****************************************
+*         V BLANK INTERRUPT
+****************************************
+
+		ORG	#40
+		JP	NEWVBL
+
+****************************************
+*       LCDC STATUS INTERRUPT
+****************************************
+
+		ORG	#48
+		RETI
+
+****************************************
+*          TIMER INTERRUPT
+****************************************
+
+		ORG	#50
+		RETI
+
+****************************************
+*            SIO INTERRUPT
+****************************************
+
+		ORG	#58
+		JP	SIO_INT
+
+****************************************
+*      P10-13 TRANSITION INTERRUPT
+****************************************
+
+		ORG	#60
+		RETI
+
+****************************************
+*        NINTENDO LOGO DATA
+****************************************
+
+		ORG	#100
+
+		HEX 00C35001
+		HEX	CEED6666
+		HEX	CC0D000B
+		HEX	03730083
+		HEX	000C000D
+		HEX	0008111F
+		HEX	8889000E
+		HEX	DCCC6EE6
+		HEX	DDDDD999
+		HEX	BBBB6763
+		HEX	6E0EECCC
+		HEX	DDDC999F
+		HEX	BBB9333E
+
+****************************************
+*         GAME HEADER INFO
+****************************************
+
+				;0123456789012345
+TITLESTR
+			DB	"ASTEROIDS      "	;GAME TITLE (15 CHRS) CGB
+			DB	#80					;CGB COMPATIBLE
+
+			DB	0,0					;MAKER CODE
+			DB	#00					;SUPER GAMEBOY FUNCTIONS
+			DB	#19					;CARTRIDGE TYPE
+			DB	#05					;ROM SIZE
+			DB	#01					;RAM SIZE
+			DB	#01					;MANUFACTURER CODE (Destination)
+			DB	#33					;FIXED VALUE
+			DB	#00					;VERSION NUMBER
+COMCHK		DB	#a6					;COMPLEMENT CHECK
+CHKSUM		DW	0					;CHECKSUM
+
+****************************************
+*        CARTRIDGE EXEC HERE
+****************************************
+
+		ORG	#150
+		JP	INIT
+
+****************************************
+*			 Sine Table 
+****************************************
+
+		ORG	#200
+
+Sine	EQU	$
+
+		HEX 000306090C0F1316191C1F2225282B2E
+		HEX 303336393C3E414446494B4E50535557
+		HEX 595C5E6062646667696B6C6E6F717273
+		HEX 75767778797A7A7B7C7C7D7D7D7E7E7E
+		HEX 7E7E7E7E7D7D7C7C7B7B7A7978777675
+		HEX 747371706F6D6B6A68666463615F5D5A
+		HEX 585654514F4C4A474542403D3A373532
+		HEX 2F2C292623201D1A1714110E0B080401
+		HEX FEFBF8F5F2EFECE9E6E3E0DDDAD7D4D1
+		HEX CECBC8C6C3C0BEBBB8B6B3B1AEACAAA8
+		HEX A5A3A19F9D9B999896949391908E8D8C
+		HEX 8B8A8988878685858483838382828282
+		HEX 82828283838384848586868788898A8B
+		HEX 8D8E8F9192949597999B9D9EA0A3A5A7
+		HEX A9ABAEB0B2B5B7BABDBFC2C5C7CACDD0
+		HEX D3D6D9DCDFE2E5E8EBEEF1F4F7FAFDFF
+
+****************************************
+*			Cosine Table
+****************************************
+
+		ORG	#300
+
+Cosine	EQU	$
+
+		HEX 7E7E7E7D7D7D7C7C7B7A797978777574
+		HEX 7372706F6D6C6A69676563615F5D5B59
+		HEX 575452504D4B484643403E3B38353230
+		HEX 2D2A2724211E1B1815120F0C080502FF
+		HEX FCF9F6F3F0EDEAE6E3E0DDDAD7D5D2CF
+		HEX CCC9C6C4C1BEBCB9B6B4B2AFADAAA8A6
+		HEX A4A2A09E9C9A9896959392908F8D8C8B
+		HEX 8A898887868585848483838282828282
+		HEX 828282838384848585868788898A8B8C
+		HEX 8E8F9092939597989A9C9EA0A2A4A6A8
+		HEX ABADAFB2B4B7B9BCBFC1C4C7C9CCCFD2
+		HEX D5D8DBDEE1E4E7EAEDF0F3F6F9FCFF03
+		HEX 06090C0F1215181B1E2124272A2D3033
+		HEX 36383B3E414346484B4D50525557595B
+		HEX 5D5F61636567696A6C6E6F7172737476
+		HEX 777879797A7B7C7C7D7D7D7E7E7E7E7E
+
+****************************************
+*		  Volume Translation
+****************************************
+
+		ORG	#400
+
+VolTran	EQU	$
+
+		HEX 00000000000000000000000000000000
+		HEX 00000000000000000000000000000001
+		HEX 00000000000000000101010101010102
+		HEX 00000000000101010101020202020203
+		HEX 00000000010101010202020203030304
+		HEX 00000001010102020203030304040405
+		HEX 00000001010202020303040404050506
+		HEX 00000001010202030304040505060607
+		HEX 00000101020203030404050506060708
+		HEX 00000101020303040405060607070809
+		HEX 0000010202030404050606070808090a
+		HEX 00000102020304050506070808090a0b
+		HEX 000001020304040506070808090a0b0c
+		HEX 0000010203040506060708090a0b0c0d
+		HEX 00000102030405060708090a0b0c0d0e
+		HEX 000102030405060708090a0b0c0d0e0f
+				
+****************************************
+*	  START OF PROGRAM
+****************************************
+
+		MEMB	RType
+		MemB	Cheat
+
+;		ORG	#500
+		
+
+INIT:
+
+		and		a			; 1:DMG(SGB),FF:MGB(SGB2),11:CGB
+		cp		#11
+
+		ld		a,#00		;Not CGB(0) (XOR A impossible since Zero-Flag changes)
+		jr		nz,@notCGB
+
+		inc		a			;CGB(1)
+
+@notCGB:
+		ld		(CGBFLAG),a 
+
+
+SOFTRESET:
+		DI
+
+		LD		SP,STACK		
+		CALL	INITHARD		
+
+		call	InitSound
+		call	InitMusic
+
+		if MUSICROM = 1
+		
+		ld	a,#0a			;EXT RAM CS/ON(ChipSelect)
+		ld	(RAMG),A
+	
+		endif
+
+		XOR	A
+		LD	(SIOFLAG),A
+		LD	(ORKEYS),A
+
+		LD	A,#01
+		SETBANK
+
+		CALL	DMA_COPY
+		CALL	DMA_TRANSFER
+
+;		CALL	CLS		
+				  
+		EI
+
+		CALL	FASTMODE
+
+		call	InitTaskList
+		call	InitLink
+		call	GetKeys
+
+;		ld		A,(Keys)
+;		and		1
+;		ld		a,1
+;		ld		(Cheat),a
+
+		ld		A,(Keys)
+		bit    	BIT_KEY_START,A
+		call	NZ,Art_Viewer
+
+		ld		A,(Keys)
+		bit    	BIT_KEY_SELECT,A
+		call	nz,SoundTest
+
+	if MUSICROM = 1
+		jp		MusicTest
+		jp		SoundTest
+	endif
+
+		CALL	START
+
+		xor		a
+		ld		(RType),a
+
+		JP		MON_ENTER
+
+****************************************
+* 		 Display background
+****************************************
+
+BakZone	dw		PAL_Zone1bg
+		dw		PAL_Zone2bg
+		dw		PAL_Zone3bg
+		dw		PAL_Zone4bg
+		dw		PAL_Zone5bg
+
+		dw		PAL_bw1
+		dw		PAL_bw2
+		dw		PAL_bw3
+		dw		PAL_bw4
+		dw		PAL_bw5
+
+DispBackGnd:
+
+
+		ld		a,(ThisZone)
+		dec		a		
+		cp		5
+		ret		nc
+
+		ld		c,a
+
+		ld		a,(CGBFlag)
+		and		a
+		jr		nz,@nope
+
+		ld		a,c
+		add		a,5
+		ld		c,a
+	
+@nope:
+		ld		a,c
+		add		a,a
+
+		ld		c,a			
+		ld		b,0
+		ld		hl,BakZone
+		add		hl,bc
+
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+AnyBackGnd:
+		push	hl
+		call	SetBGPal			;SetPalette/SetBGPal
+		pop		hl
+
+		inc		hl
+		push	hl
+		call	Load_BakGnd
+		pop		hl
+
+
+		push	hl
+		call	Disp_BakGnd				; Draws to the work screen
+		pop		hl
+
+		inc		hl
+		call	SetFontMap
+		ret
+
+Show_BakGnd:
+		push	hl
+		call	SetBGPal			;SetPalette/SetBGPal
+		pop		hl
+
+		inc		hl
+
+		push	hl
+		call	Load_BakGnd
+		pop		hl
+
+		call	Disp_BakGnd			;Draws to the work screen
+		ret
+
+****************************************
+*		INIT GAME
+****************************************
+
+;game_type	4 = schunt
+;			x = Tag
+
+		MemB	ThisLevel
+		MemB	ThisZone
+
+ZoneTab:
+		dw		TXT_zone1
+		dw		TXT_zone2
+		dw		TXT_zone3
+		dw		TXT_zone4
+		dw		TXT_zone5
+
+SetZone:
+		ld		a,(Game_Type)
+
+		cp		5
+		jr		z,@Scave
+
+		cp		6
+		jr		z,@Tag
+
+		ld		a,(ThisZone)
+		dec		a		
+		cp		5
+		ret		nc
+
+		add		a,a
+		ld		l,a
+		ld		h,0
+		ld		de,ZoneTab
+		add		hl,de
+		
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,(ThisLevel) 					;Level Num
+		call	SpawnLevel
+		ret
+
+@Scave:
+		ld		hl,TXT_shunt
+		ld		a,(ThisLevel) 					;Level Num
+		call	SpawnLevel
+		ret
+
+@Tag:
+		ld		hl,TXT_tag
+		ld		a,(ThisLevel) 					;Level Num
+		call	SpawnLevel
+		ret
+
+****************************************
+*		INIT GAME
+****************************************
+
+MainInit:
+;		call	Cls
+		call	Clr_Game_Vars
+		call	Init_Game_Scr
+
+		ld		a,(ShipInit)
+		and		a
+		call	nz,InitTasks
+
+		Task	2					;clear out tasks
+		ld		b,MaxUsed-2			;except 0 & 1
+		call	ResetTasks
+
+		call	InitCollisions
+		call	InitSprites
+		call	InitSeqs
+
+		call	GetObjCount				;clear spr count
+
+		call	InitNME
+		call	InitNME
+
+		ld		hl,PAL_ObjPal
+		call	SetObjPal
+
+		ld		a,(Game_Type)
+		cp		2
+		jp		z,ClassicType
+
+
+SingleType:
+
+		ld		a,(ThisLevel)
+		call	DispBackGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+
+		call	InitPanel
+
+		call	Init_Ship
+		call	Init_Remote
+
+		call	SetZone
+
+		call	TestEnemy
+		call	TestPickup
+
+		call	InitSuns
+		call	InitWhirl
+		call	InitWorm
+
+		call	InitCurtain
+		call	InitCities
+
+		call	Init_MPPickUp
+		call	Init_ScavePick
+		call	InitTag
+		ret
+
+
+****************************************
+*		INIT GAME
+****************************************
+
+RunMain:
+		call	InitNME
+		
+		call	InitSpr
+		call	InitCollisions
+
+		call	RunGroups
+
+		call	RunShipTasks
+		call	RunNMETasks
+
+;		call	RunTasks
+
+@Paused:
+		call	ShowPanel
+
+		LD		A,1
+		LD		(DMA_GO),A
+
+		call	UpdatBackGnd		
+
+		call	RunHitList
+		call	GetObjCount
+		call	DoShaker
+		call	Wait_Fly
+
+		call	TestReset
+
+;		HALT
+;		nop
+
+		call	GetKeys
+		call	HandleLink
+		
+		call	TestPause
+
+		ld		a,(PauseMode)
+		and		a
+		call	nz,PauseLoop
+		
+		ld		hl,Time
+		inc		(hl)
+		ret
+
+****************************************
+*
+****************************************
+
+PauseLoop:
+
+		ld		a,(Time)
+		and		8
+		jr		z,@ok		
+
+		call	Print
+		db		at,6,7,"PAUSED"
+		db		stop
+
+@ok:
+		call	UpdatBackGnd
+		call	Wait_Fly
+
+		call	TestReset
+		call	GetKeys
+		call	HandleLink
+		call	TestPause
+
+		ld		hl,Time
+		inc		(hl)
+
+		ld		a,(PauseMode)
+		and		a
+		jr		nz,PauseLoop
+		ret
+
+****************************************
+*
+****************************************
+
+		MemB	PauseMode
+
+TestPause:
+
+		ld		a,(DemoMode)
+		and		a
+		ret		nz
+
+		ld		a,(Trigger)
+		ld		c,a
+
+		ld		a,(Connect)
+		and		a
+		jr		z,@noCon
+		
+		ld		a,(InTrig)
+		or		c
+		ld		c,a
+@noCon:
+
+		ld		a,c
+		bit   	BIT_KEY_START,a		;TESTED IN FALL
+		ret		z
+
+		ld		a,(PauseMode)
+		xor		1
+		ld		(PauseMode),a
+
+		ret
+		
+****************************************
+*		INIT GAME
+****************************************
+
+		MemB	ThisEnemy
+		MemB	ThisWeapon
+
+	if 0
+		
+START:
+		call	DetectEmu
+
+		ld		hl,MIDI_Introb
+		ld		d,1
+		call	PlayMusic
+
+		call	Boot					;Dom's shell
+
+;---------------------------------------
+;			Sync the link
+;---------------------------------------
+
+@sync:
+
+		ld		a,(Connect)
+		and		a
+		jr		z,@ok
+
+		call	Wait_Fly
+		
+		ld		a,#ff
+		ld		(Keys),a
+		
+		call	HandleLink
+
+		ld		a,(InKeys)
+		cp		#ff
+		jr		nz,@sync
+
+@ok:
+		xor		a
+		ld		(Keys),a
+		ld		(Trigger),a
+		ld		(InTrig),a
+		ld		(InKeys),a
+
+;---------------------------------------
+
+		ld		a,1
+		ld		(ShipInit),a
+
+		ld		a,1
+		ld		(ThisLevel),a
+		ld		a,(domszone)
+		ld		(ThisZone),a
+
+		xor		a
+		ld		(ThisWeapon),a
+		ld		(ThisEnemy),a
+
+;		ld		de,BehaveBuf
+;		ld		hl,TXT_setting
+;		call	GetSettings
+
+
+NextLevel:
+
+		ld		a,(ThisZone)
+		dec		a
+		ld		hl,MIDI_Az1b
+		ld		e,a
+		ld		d,0
+		add		hl,de
+
+		ld		a,(ThisLevel)
+		cp		6
+		jr		c,@ok
+		ld		a,5
+@ok:	ld		d,a
+
+		call	PlayMusic
+
+		ld		a,(ThisLevel)
+		add		a,a
+		add		a,a
+		add		a,41
+		swap	a
+		ld		(seed),a
+
+		call	MainInit
+
+		xor		a				;start new level
+		ld		(EndLevel),a
+
+		call	RunMain
+
+		xor		a
+		ld		(ShipInit),a
+
+		call	ForceUpdate
+
+MainLoop:
+		call	RunMain
+
+		LD		A,(KEYS)
+		BIT   	BIT_KEY_SELECT,A		;TESTED IN FALL
+		jp		nz,Options
+;;		jp		nz,SoundTest
+
+
+		ld		a,(RockCount)
+		and		a
+		jp		z,GoNext
+
+		ld		a,(Time)
+		and		31
+		jp		nz,MainLoop
+
+		LD		A,(KEYS)
+		BIT   	BIT_KEY_START,A		;TESTED IN FALL
+		JP		Z,MAINLOOP
+
+		
+		ld		a,(ThisLevel)
+		inc		a
+		cp		16
+		jp		z,MainLoop
+
+		ld		(ThisLevel),a
+		jp		NextLevel
+
+		JP		MainLoop
+
+GoNext:
+		ld		a,1				;signal end of level			
+		ld		(EndLevel),a
+
+		ld		b,100
+@loop:
+		push	bc
+		call	RunMain
+		pop		bc
+		dec		b
+		jr		nz,@loop
+
+		ld		a,(ThisLevel)
+		inc		a
+		cp		16
+		jp		nz,@nextlev
+
+		ld		hl,ThisZone		;next zone
+		inc		(hl)
+
+		ld		a,1
+
+@nextlev:
+		ld		(ThisLevel),a
+		
+		jp		NextLevel
+
+		endif
+
+****************************************
+*			Options menu
+****************************************
+	
+Options:
+		call	InitSpr
+		call	NoFontMap
+
+		ld		a,1
+		ld		(DMA_GO),a
+
+		call	Wait_Fly
+
+		call	CopyChars
+
+		ld		hl,PAL_DebugPal
+		call	SetBGPal
+
+		call	ClsSpace
+		call	ScrToCopy				; Copy the work screen to the copy screen
+
+		xor		a
+		ld		(ThisWeapon),a
+		ld		(ThisEnemy),a
+
+OptionsLoop:
+		call	GetKeys
+		call	TestReset
+
+		call	Print
+		db		at,0,0,"Debug Options"
+		
+		db		at,2,0,"Level  %b"
+		dw		ThisLevel
+
+		db		at,3,0,"Zone   %b"
+		dw		ThisZone
+
+		db		at,5,0,"A = Weapon %b"
+		dw		ThisWeapon
+		
+		db		at,6,0,"B = Enemy  %b"
+		dw		ThisEnemy
+
+		db		at,8,0,"AB = Hits off %b"
+		dw		Cheat
+
+		db		stop
+
+		call	UpdatBackGnd		
+
+		ld		a,(Keys)
+		bit		Bit_Key_a,a
+		jr		z,@nocheat
+
+		ld		a,(Trigger)
+		bit		Bit_Key_b,a
+		jr		z,@nocheat
+
+		ld		a,(Cheat)
+		xor		1
+		ld		(Cheat),a
+
+@nocheat:
+		ld		hl,ThisLevel
+
+		ld		a,(Keys)
+		bit		Bit_Key_a,a
+		jr		z,@noa
+
+		ld		hl,ThisWeapon
+
+@noa
+		ld		a,(Keys)
+		bit		Bit_Key_b,a
+		jr		z,@nob
+
+		ld		hl,ThisEnemy
+
+@nob
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Up,a
+		jr		z,@noInc
+
+		inc		(hl)
+
+@noInc:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Down,a
+		jr		z,@noDec
+
+		dec		(hl)
+
+@noDec:
+
+		ld		hl,ThisZone
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Right,a
+		jr		z,@noIncz
+
+		inc		(hl)
+
+@noIncz:
+
+		ld		a,(Trigger)
+		bit		Bit_Key_Left,a
+		jr		z,@noDecz
+
+		dec		(hl)
+
+@noDecz:
+
+
+		ld		a,(Trigger)
+		bit  	BIT_KEY_SELECT,a		;TESTED IN FALL
+		jp		z,OptionsLoop
+
+@wait:
+		call	GetKeys
+
+		ld		a,(Keys)
+		bit  	BIT_KEY_SELECT,a		;TESTED IN FALL
+		jp		nz,@wait
+
+
+		JP		NextLevel
+
+****************************************
+*		  Game Art Viewer
+****************************************
+
+		MemW	ArtNum
+		MemW	TestSeq
+
+Art_Viewer:
+		call	NoFontMap
+
+		ld		hl,0
+		stm		ArtNum,hl
+		ld		hl,0
+		stm		TestSeq,hl
+
+		call	Cls
+		call	Clr_Game_Vars
+		call	Init_Game_Scr
+
+		call	InitCollisions
+		call	InitTasks
+		call	InitSprites
+		call	InitSeqs
+
+		ld		hl,PAL_ObjPal
+		call	SetObjPal
+
+;		ld		hl,PAL_BakPal
+;		call	SetBGPal
+
+		call	CopyChars
+
+		ld		hl,PAL_DebugPal
+		call	SetBGPal
+
+		call	ClsSpace		
+		call	ScrToCopy				; Copy the work screen to the copy screen
+ArtLoop:
+		call	Print
+		db		at,0,0,"Object %w"
+		dw		ArtNum
+		db		stop
+
+		call	InitSpr
+		call	InitCollisions
+
+		call	RunGroups
+		call	RunTasks
+
+		call	DispArt
+
+		LD		A,1
+		LD		(DMA_GO),A
+
+		call	UpdatBackGnd		
+		call	RunHitList
+
+;		call	Wait_Fly
+
+		call	GetKeys
+		call	TestReset
+
+		ld		hl,Time
+		inc		(hl)
+
+		ld		a,(Keys)
+		bit   	BIT_KEY_SELECT,a		;TESTED IN FALL
+		ret		nz
+
+		ld		e,a
+
+		bit   	BIT_KEY_A,a		;TESTED IN FALL
+		jp		z,@notrig
+
+		call	Wait_Fly
+
+		ld		a,(Trigger)
+		ld		e,a
+
+		jr		@trig
+
+@notrig:
+
+		ld		a,(Time)
+		and		3
+		;jp		nz,ArtLoop
+
+@trig:
+
+		LD		A,E
+		BIT   	BIT_KEY_LEFT,A		;TESTED IN FALL
+		jp		z,@1
+
+		call	ClearSeqs
+		call	ClearArtScr
+
+		ld		hl,0
+		stm		TestSeq,hl
+
+		ldm		hl,ArtNum
+		dec		hl
+
+		bit		7,h
+		jr		nz,@1
+		
+		stm		ArtNum,hl
+
+
+@1:
+		LD		A,E
+		BIT   	BIT_KEY_RIGHT,A		;TESTED IN FALL
+		jp		z,@2
+
+		call	ClearSeqs
+		call	ClearArtScr
+
+		ld		hl,0
+		stm		TestSeq,hl
+
+		ldm		hl,ArtNum
+		inc		hl
+
+		ld		a,h
+		cp		16
+		jr		nc,@2
+		
+		stm		ArtNum,hl
+		
+@2:
+
+
+		LD		A,(Keys)
+		BIT   	BIT_KEY_UP,A		;TESTED IN FALL
+		jp		z,@3
+
+		call	ClearSeqs
+		call	ClearArtScr
+
+		ld		hl,0
+		stm		TestSeq,hl
+
+		ldm		hl,ArtNum
+		ld		de,-64
+		add		hl,de
+
+		bit		7,h
+		jr		nz,@3
+		
+		stm		ArtNum,hl
+
+@3:
+		LD		A,(Keys)
+		BIT   	BIT_KEY_DOWN,A		;TESTED IN FALL
+		jp		z,@4
+
+		call	ClearSeqs
+		call	ClearArtScr
+
+		ld		hl,0
+		stm		TestSeq,hl
+
+		ldm		hl,ArtNum
+		ld		de,64
+		add		hl,de
+
+		ld		a,h
+		cp		16
+		jr		nc,@4
+		
+		stm		ArtNum,hl
+		
+@4:
+
+
+		JP		ArtLoop
+
+
+		MemB ArtType
+
+DispArt:
+
+		ldm		hl,ArtNum
+		call	GetResInfo
+
+		ld		(ArtType),a
+
+		cp		Type_GB_seq
+		jr		z,@doseq		
+	
+		cp		Type_GBC_spr
+		jr		z,@dospr		
+
+		cp		Type_GBC_bak
+		jr		z,@dospr		
+
+		cp		Type_BGBC_pal
+		jr		z,@scr		
+
+		cp		Type_BGB_pal
+		jr		z,@scr		
+		
+		call	Print
+		db		at,1,0,"Type %b"
+		dw		ArtType
+		db		stop
+		ret
+	
+@dospr:
+		call	Print
+		db		at,1,0,"Sprite",stop
+
+		ldm		hl,ArtNum
+		ld		c,160/2
+		ld		b,144/2
+		call	DISP_SPR
+
+		ret
+
+@scr:
+		ldm		hl,ArtNum
+		call	AnyBackGnd
+		ret
+
+@doseq:
+
+		call	Print
+		db		at,1,0,"Sequence",stop
+
+		ldm		hl,TestSeq
+
+		ld		a,h
+		or		l
+		jr		nz,@run		
+
+		xor		a
+		ld		(ThisTask),a
+
+		ldm		hl,ArtNum
+		call	InitSeq
+		stm		TestSeq,hl
+
+@run:
+		xor		a
+		ld		(ThisTask),a
+
+		ld		c,160/2
+		ld		b,144/2
+		ldm		hl,TestSeq			;Seq handle in anim
+		call	RunSeq
+
+;		ret
+
+		ld		a,(Seq_Alpha)		;is seq non looping
+		cp		#ff
+		ret		nz
+
+		call	ClearSeqs
+
+		xor		a
+		ld		(ThisTask),a
+
+		ldm		hl,ArtNum
+		call	InitSeq
+		stm		TestSeq,hl
+		ret
+
+ClearArtScr:
+
+		call	CopyChars
+
+		ld		hl,PAL_DebugPal
+		call	SetBGPal
+
+;		call	ClsSpace		
+;		call	ScrToCopy				; Copy the work screen to the copy screen
+		ret
+		
+****************************************
+*	     CLEAR GAME VARS
+****************************************
+
+CLR_GAME_VARS	XOR	A
+		LD	(TIME),A
+		LD	(KEYS),A
+		LD	(TRIGGER),A
+		LD	(TIME),A
+;		LD	(HARDSPR),A
+;		LD	(XPOS),A
+;		LD	(XPOS+1),A
+
+		xor	a
+		ld	(EndLevel),a
+		ld	(EnemyOn),a
+		ld	(PauseMode),a
+
+		ld	a,#ff
+		ld	(ShakePos),a
+		RET
+
+****************************************
+*	      SHAKE SCREEN
+****************************************
+
+		MemB	ShakePos		
+
+ShakeTab:
+		db	1,0,2,0,1,0,2,0,1,#ff
+
+DoShaker:
+		ld		a,(ShakePos)
+		cp		#ff
+		ret		z
+
+		ld		hl,ShakeTab
+		ld		b,0
+		ld		c,a
+		add		hl,bc
+
+		ld		a,(hl)		
+		cp		#ff
+		jr		z,@done
+
+		ldz		(scy),a
+
+		ld		hl,ShakePos
+		inc		(hl)
+		ret
+
+@done:
+		ld		a,#ff
+		ld		(ShakePos),a
+
+		xor		a
+		ldz		(scy),a
+		RET
+
+****************************************
+*	   NEW VBLANK ROUTINE
+****************************************
+
+		MemB	FrameCount
+
+NEWVBL		DI
+
+		PUSH	AF			;SAVE ALL
+		PUSH	HL
+		PUSH	DE
+		PUSH	BC
+
+		CALL	INT_DMA_GO
+
+	if MUSICROM = 0
+		PushBank
+	
+		call	Sound_Int
+		call	Midi_Int
+
+		PopBank
+	endif
+
+		ld	hl,VBLFLAG
+		inc	(hl)
+
+		POP	BC			;RESTORE MOST
+		POP	DE
+		POP	HL
+		EI
+
+;*** !!! WHY WHY WHY !!! Can't Remember ***
+; I Think it's if an interuppt occurs inside a sprite routine
+; Note. I don't think this is possible since it's a vblank
+
+@W1		LDZ	A,(STAT)		;DON'T RETURN UNTIL HBLANK
+		AND	2				;IS IN CORRECT PLACE !!
+		JP	NZ,@W1
+
+		POP	AF				;RESTORE A
+		RETI
+
+****************************************
+*       INITIALISE GAME SCREEN
+****************************************
+
+TestReset:
+		ld		a,(Keys)
+		cp		Key_Reset
+		ret		nz
+
+@wait:
+		call	GetKeys
+
+		ld		a,(Keys)
+		cp		Key_Reset
+		jr		z,@wait
+		
+		jp		SOFTRESET
+
+****************************************
+*       INITIALISE GAME SCREEN
+****************************************
+
+INIT_GAME_SCR
+		LD	A,%10010011
+		LDZ	(BGP),A
+
+		LD	A,%00011011				;%00011110
+		LDZ	(OBP0),A
+		LDZ	(OBP1),A
+
+		LD	A,%10000111
+;			   ||||||||_________ BG        ON(1)/OFF
+;			   |||||||__________ SPR       ON(1)/OFF
+;			   ||||||___________ OBJ      8X8(0)/8X16
+;			   |||||____________ BG MAP  9800(0)/9C00
+;			   ||||_____________ BG CHR  8800(0)/8000
+;			   |||______________ WIN       ON(1)/OFF
+;			   ||_______________ WIN MAP 9800(0)/9C00
+;			   |________________ CONTROL   ON(1)/OFF
+;
+		LDZ	(LCDC),A
+
+		XOR	A
+		LDZ	(WY),A
+		LDZ	(WX),A
+		LDZ	(SCX),A
+		LDZ	(SCY),A
+		RET
+
+****************************************
+*          INITIALISE HARDWARE
+****************************************
+
+INITHARD
+      	XOR	A
+		LDZ	(IF),A
+		LD	(DMA_GO),A
+
+		LD	A,%00001001
+		LDZ	(IE),A
+
+		LD	HL,#C000		;CLEAR RAM
+		LD	BC,#1EFF		;DON'T CLEAR STACK
+
+@LOOP
+		XOR	A
+		LD	(HL),A
+		INC HL
+		
+		DEC	BC
+		LD	A,B
+		OR	C
+		JR	NZ,@LOOP
+
+		LD	HL,#FFFE
+
+		LD	B,#7E
+		XOR	A
+
+@LOOP2	LD	(HL),A
+		DEC	L
+		dec	b
+		Jr	NZ,@LOOP2
+
+		LD	HL,#FEFF
+		DEC	B
+
+@LOOP3	LD	(HL),A
+		DEC	L
+		dec	b
+		jr	nz,@LOOP3
+
+		ld		hl,#8000
+		ld		b,8
+		
+		xor		a
+		ld		(VBK),a
+
+@clr:
+		call	Wait_Stat
+
+		xor		a
+		ld		(hli),a	
+		ld		(hli),a	
+		
+		dec		b
+		jr		nz,@clr
+
+
+		CALL	DMA_COPY
+		CALL	DMA_TRANSFER
+
+		;LD	A,%00011011		;ZERO PALETTE
+		;LDZ	(BGP),A
+		;LDZ	(OBP0),A
+		;LDZ	(OBP1),A
+
+		RET
+
+PALNORM		LD	A,%00011011
+;		LDZ	(BGP),A
+		RET
+
+PALWHITE	LD	A,%00000000
+;		LDZ	(BGP),A
+		RET
+
+****************************************
+*		LCD ON/OFF
+****************************************
+
+LCD_ON		LDZ	A,(LCDC)
+		SET	7,A
+		LDZ	(LCDC),A
+		RET
+
+LCD_OFF		LDZ	A,(LCDC)
+		RES	7,A
+		LDZ	(LCDC),A
+		RET
+
+PAL_ON		LD	A,%00011011
+		;LDZ	(BGP),A
+		;LDZ	(OBP0),A
+		;LDZ	(OBP1),A
+		RET
+
+PAL_OFF		LD	A,#FF
+		;LDZ	(BGP),A
+		;LDZ	(OBP0),A
+		;LDZ	(OBP1),A
+		RET
+
+INVERT
+		;LD	A,(BGP)
+		;XOR	%11111111
+		;LD	(BGP),A
+		RET
+
+
+****************************************
+*           TEST FOR DOWNLOAD
+****************************************
+
+;INBYTE		= #DFC0
+;SIOFLAG	= #DFC1
+
+DODOWN		RET
+
+		LD	A,(SIOFLAG)
+		AND	A
+		JP	Z,@NODATA
+
+		LD	A,(INBYTE)		;TEST FOR ECHO COMMAND
+		CP	150
+;		JP	Z,DOWNLOAD
+
+@NODATA		LD	A,(KEYS)
+		BIT	3,A
+		JP	Z,@SET
+
+		BIT	2,A
+;		JP	NZ,DOWNLOAD
+
+@SET		LD	A,#80			;LISTEN
+		LD	(SC),A
+		RET
+
+********************************************************************************
+*		     ERROR CONTROL PROGRAMS
+********************************************************************************
+
+		if 0
+
+HEXTAB		DB	"0123456789ABCDEF"
+
+DHEX8:
+			LD	C,A
+			SWAP	A
+			AND	#0F
+			LD	HL,HEXTAB
+			LD	E,A
+			LD	D,0
+			ADD	HL,DE
+			LD	A,(HL)
+	
+			PUSH	BC
+			CALL	PRCHR
+			POP	BC	
+	
+			LD	A,C
+			AND	#0F
+			LD	HL,HEXTAB
+			LD	E,A
+			LD	D,0
+			ADD	HL,DE
+			LD	A,(HL)
+			CALL	PRCHR 
+			RET
+
+DHEX16:
+			PUSH	HL
+			LD	A,H
+			CALL	DHEX8
+			POP	HL
+			LD	A,L
+			CALL	DHEX8
+			RET
+
+BOMBOUT:
+			DI
+			LD	(ERRORNUM),A
+	
+			LD	A,L
+			LD	(REGHL),A
+			LD	A,H
+			LD	(REGHL+1),A
+	
+			LD	A,E
+			LD	(REGDE),A
+			LD	A,D
+			LD	(REGDE+1),A
+	
+			LD	A,E
+			LD	(REGDE),A
+			LD	A,D
+			LD	(REGDE+1),A
+	
+			LD	A,C
+			LD	(REGBC),A
+			LD	A,B
+			LD	(REGBC+1),A
+	
+			LD	HL,0
+			ADD	HL,SP
+			LD	A,L
+			LD	(REGSP),A
+			LD	A,H
+			LD	(REGSP+1),A
+	
+			POP	HL		;GET RETURN ADDRESS
+	
+			LD	A,H
+			LD	(RET_H),A
+	
+			LD	A,L
+			LD	(RET_L),A
+	
+			LD	SP,STACK
+	
+			CALL	PRINT
+			DB	AT,0,1,"BOMBOUT #",STOP
+			LD	A,(ERRORNUM)
+			CALL	DHEX8
+	
+			CALL	PRINT
+			DB	AT,1,1,"RET = #",STOP
+			LD	A,(RET_H)
+			CALL	DHEX8
+			LD	A,(RET_L)
+			CALL	DHEX8
+	
+			CALL	PRINT
+			DB	AT,2,1,"HL = #",STOP
+			LD	A,(REGHL+1)
+			CALL	DHEX8
+			LD	A,(REGHL)
+			CALL	DHEX8
+	
+			CALL	PRINT
+			DB	AT,3,1,"DE = #",STOP
+			LD	A,(REGDE+1)
+			CALL	DHEX8
+			LD	A,(REGDE)
+			CALL	DHEX8
+	
+			CALL	PRINT
+			DB	AT,4,1,"BC = #",STOP
+			LD	A,(REGBC+1)
+			CALL	DHEX8
+			LD	A,(REGBC)
+			CALL	DHEX8
+	
+			CALL	PRINT
+			DB	AT,5,1,"SP = #",STOP
+			LD	A,(REGSP+1)
+			CALL	DHEX8
+			LD	A,(REGSP)
+			CALL	DHEX8
+
+			JP		MON_ENTER
+
+****************************************
+*	   PRINT A HEX NUM
+****************************************
+
+HEX8		LD	C,A
+	
+			WaitVideo
+			
+			LD	A,C
+			SWAP	A
+			AND	#0F
+			LD	(HLI),A		
+	
+			WaitVideo
+	
+			LD	A,C
+			AND	#0F
+			LD	(HLI),A
+      		RET
+
+		endif
+
+********************************************************************************
+*			 INCLUDE OTHER FILES
+********************************************************************************
+
+****************************************
+*         Bank 0 Code
+****************************************
+
+			IndexBase TaskBase
+
+			INCLUDE Game.sub
+			INCLUDE Monitor.sub
+			INCLUDE	Task.sub
+			INCLUDE Seq.sub
+			INCLUDE Collide.sub
+			INCLUDE	System.sub
+			INCLUDE Sprite.sub
+			INCLUDE BackGnd.sub
+			INCLUDE Palette.sub
+			INCLUDE Print.sub
+			INCLUDE Tools.sub
+			INCLUDE Link.sub
+			INCLUDE DataType.sub
+			INCLUDE Zone.sub
+			INCLUDE Panel.sub
+			INCLUDE Detect.sub
+			INCLUDE Instrum.sub
+			INCLUDE Music.sub
+
+ENDBANK0	EQU	$
+LEFTBANK0	EQU	#4000 - $
+
+			IF	$>#3FFF
+			ERROR Rom Bank 0 OverFlow
+			ENDIF
+
+****************************************
+*         Bank 1 Code
+****************************************
+
+			org		#14000
+
+			IndexBase TaskBase
+
+			INCLUDE Shell.sub
+
+			INCLUDE	Ship.sub
+			INCLUDE	Enemy.sub
+			INCLUDE	Pickup.sub
+			INCLUDE	Rocks.sub
+			INCLUDE	Weapon.sub
+			INCLUDE	Classic.sub
+			INCLUDE	BackAnim.sub
+
+ENDBANK1	EQU	$
+LEFTBANK1	EQU	#8000 - $
+
+			IF	$>#7FFF
+			ERROR Rom Bank 1 OverFlow
+			ENDIF
+
+********************************************************************************
+*           		    PAGED MEMORY
+********************************************************************************
+			
+
+ENDWORD		EQU	$
+
+****************************************
+*         END OF PROGRAM
+****************************************
+
+END		EQU	$
+		END

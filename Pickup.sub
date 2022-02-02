@@ -1,0 +1,271 @@
+********************************************************************************
+* 			 		  Asteroids Pick-Ups
+********************************************************************************
+
+		IndexBase TaskBase
+
+****************************************
+*		 Get Seq for type
+*			 a = Type
+*			 c = size
+*	 Returns z set for null type
+****************************************
+
+;need to check all asset seqs are in !
+
+PickTypeTab:
+		dw	0					;0	Null
+		dw	seq_puparm			;1	Armageddon
+		dw	seq_pupmine			;2	Normal Mines
+		dw	seq_pupgm			;3	Guided Missiles
+		dw	seq_pupgsat			;4	GunSat
+		dw	seq_pupsb			;5	Smart Bomb
+		dw	seq_pupion			;6	Ion Deflector
+		dw	seq_pupst			;7	Super Thrust
+		dw	seq_pupds			;8	Drill Shot
+		dw	seq_puprs			;9	Ramming Shield
+		dw	seq_puptbomb		;10	Trigger Bomb
+		dw	seq_pupwall			;11	Wall
+		dw	0					;12	Laser (not used)
+		dw	seq_pupws			;13	Wide Shot
+		dw	seq_pupsh1			;14	Free ship
+		dw	seq_1pts			;15	Extra points
+		dw	seq_pupdef			;16	Defense powerup
+		dw	seq_puprnd			;17	Random powerup
+
+		dw	seq_pupfreeze		;18	MP Freeze bullets
+		dw	seq_pupelec			;19 MP Elec Short
+		dw	seq_pupslow			;20	MP Slow down
+		dw	seq_pts2x			;21	MP Point Double
+		dw	seq_pupnothrust		;22 MP Disable Thrust
+		dw	seq_pupnoweap		;23 MP Disable Weapons
+
+		dw	seq_1pts			;24	Random Extra points
+		dw	0
+
+GetSeqPickUp:
+
+		ldx		a,Type			;Get the correct seq		
+		cp		25
+		jr		nc,@range		
+
+		cp		18				;test for MP pick
+		jr		c,@notmp
+
+@again:
+		call	Random
+		and		7
+		cp		6
+		jr		nc,@again
+
+		add		a,18
+		stx		Type,a
+
+@notmp:
+		ld		l,a
+		ld		h,0
+		
+		add		hl,hl
+		ld		de,PickTypeTab
+		add		hl,de
+		
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+		or		h				; ! Check or null seqs
+		ret
+
+@range:
+		xor		a				;a = 0 : zf = 1
+		ret
+
+****************************************
+*	        Test Pick-up
+****************************************
+
+TestPickup:
+
+		ld		a,(ThisWeapon)
+		and		a
+		ret		z
+
+		and		31
+
+		ld		c,1
+		call	SendBackChan
+
+		xor		a
+		ld		(ThisWeapon),a
+		ret
+
+****************************************
+*	    Initialize a Pick-Up
+****************************************
+
+		MemB	PickUpOn
+
+Init_ScavePick:
+
+		ld		a,(game_type)
+		cp		5
+		ret		nz
+		
+		ld		a,24
+		ld		(IData1),a		;Type
+
+		ld		a,0
+		ld		(IData2),a
+
+		ld		a,0
+		ld		(IData3),a		;
+
+		call	Random
+		and		7
+		add		a,3
+		ld		(IRegen),a		;Regen Time
+
+		jp		Init_PickUp
+
+Init_MPPickUp:
+
+		ld		a,(game_type)
+		cp		4
+		jr		z,@ok
+		
+		cp		5
+		ret		nz
+
+@ok:
+		ld		a,18
+		ld		(IData1),a		;Type
+
+		ld		a,0
+		ld		(IData2),a
+
+		ld		a,0
+		ld		(IData3),a		;
+
+		call	Random
+		and		7
+		add		a,3
+		ld		(IRegen),a		;Regen Time
+
+
+Init_PickUp:
+		xor		a
+		ld		(PickUpOn),a
+
+		ld		a,(IData1)
+		stx		Type,a			;Save the type
+
+		ld		a,(IData2)
+		stx		WideTime,a		;Repeats
+
+		ld		a,(IData3)
+		stx		B_Count,a
+
+		ld		a,(IRegen)
+		stx		Timer,a
+
+		xor		a
+		ld		(ThisTask),a
+
+		move	PickUpStart
+		jp		AddTask
+
+PickUpStart:
+		xor		a
+		ld		(PickUpOn),a
+
+		ldx		a,Timer
+		stx		Count,a
+
+		move	PickUpWait
+
+PickUpWait:
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+
+		ld		a,(PickUpOn)
+		and		a
+		ret		nz
+
+StartPow:
+
+		call	AllowTask			;dont allow picks to start
+		jp		c,PickUpStart		;if no space
+
+		ld		a,1
+		ld		(PickUpOn),a
+
+		ld		a,(IRegion)
+		call	SetRegion
+
+		ld		a,(RegDirX)
+		ld		h,a
+		ld		l,0
+		stw		h,l,XVel
+
+		ld		a,(RegDirY)
+		ld		h,a
+		ld		l,0
+		stw		h,l,YVel
+
+		ld		a,(IData1)
+		call	GetSeqPickUp
+		ret		z
+		
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		ld		a,(RegLen)
+		stx		Count,a
+
+		move	Run_PickUp
+
+Run_PickUp:
+
+		call	AddVelsOff
+;		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+
+;		ld		c,72
+;		ld		b,72
+
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	DecCounter
+		jp		z,@NoPick
+				
+		ld		hl,ShipPow
+		call	IfHit
+		ret		nc
+
+		ld		a,(ShipPow+1)		;Get the hitees task num
+		ld		c,a
+		ldx		a,Type
+		call	SendBackChan
+		
+@NoPick:
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+;		ldx		a,WideTime
+;		dec		a
+;		stx		WideTime,a
+		
+;		and		a
+;		jp		nz,PickUpStart
+
+		jp		PickUpStart
+
+		KillTask
+		ret

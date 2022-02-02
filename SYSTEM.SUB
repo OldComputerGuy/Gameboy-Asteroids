@@ -1,0 +1,398 @@
+
+********************************************************************************
+*		  	      		GameTasker GameBoy Engine
+*			      
+*         			Copyright (c) 1999 A.R.Hartley
+********************************************************************************
+
+****************************************
+*		  Get Resource info
+*in: 	 hl = resource number
+*out:	 hl = ptr to data
+*		  e = bank
+*		  a = type
+****************************************
+
+GetResInfo:
+	 	ld	a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add	hl,hl			;hl * 4
+		add	hl,hl
+		set	6,h				;make addr #4000+
+
+		ld	a,(hli)			;get type
+		ld	c,a
+
+		ld	e,(hl)			;get res bank
+		inc	l
+
+		ld	a,(hli)			;get res ptr addr
+		ld	h,(hl)
+		ld	l,a
+
+		setbank1
+
+		ld	a,c
+		ret
+
+****************************************
+*        RANDOM NUMBER GENERATOR
+*	    WELL NEAR ENOUGH
+****************************************
+
+RANDOM:
+		PUSH	BC
+
+		LD	A,(SEED)
+		LD	C,A
+		ADD	A,A
+		ADD	A,A
+		ADD	A,A
+		ADD	A,C
+		ADD	A,49
+		LD	(SEED),A
+
+		POP	BC
+		RET
+
+****************************************
+*	Find a random ranged between 0-C
+*		   Kaky but works
+****************************************
+
+Random_Range:
+
+@Loop:
+		call	Random
+		cp		c
+		jp		nc,@Loop
+		ret
+
+****************************************
+*	   READ GAMEBOY KEYS 
+*	   ~~~~~~~~~~~~~~~~~
+*	   0 = A    : 1 = B
+*	   2 = SEL  : 3 = START
+*	   4 = LEFT : 5 = RIGHT
+*	   6 = UP   : 7 = DOWN
+****************************************
+
+GETKEYS		LD	A,#20
+		LD	(P1),A
+
+		LD	A,(P1)
+		LD	A,(P1)
+		CPL
+		AND	#0F
+		SWAP	A
+		LD	B,A
+		
+		LD	A,#10
+		LD	(P1),A
+		
+		LD	A,(P1)
+		LD	A,(P1)
+		LD	A,(P1)
+		LD	A,(P1)
+		LD	A,(P1)
+		LD	A,(P1)
+		CPL
+		AND	#0F
+		OR	B
+		LD	C,A
+		
+		LD	A,(KEYS)
+		XOR	C
+		AND	C
+		LD	(TRIGGER),A
+
+		LD	A,C
+		LD	(KEYS),A
+
+		LD	A,#30
+		LD	(P1),A
+		RET
+		
+****************************************
+*	   INTERRUPT DMA GO
+****************************************
+
+INT_DMA_GO	LD	HL,DMA_GO
+		LD	A,(HL)
+		AND	A
+		RET	Z
+		LD	(HL),0
+		JP	DMA_TRANSFER
+
+****************************************
+*       PUT DMA STUFF AT #FF80
+****************************************
+
+DMA_COPY	LD	HL,DMAPRG
+		LD	C,#80
+		LD	B,10
+
+@COPY		LD	A,(HLI)
+		LD	(C),A
+		INC	C
+		DEC	B
+		JR	NZ,@COPY
+		RET	
+
+****************************************
+*         END OF PROGRAM
+****************************************
+
+DMA_TRANSFER	EQU	#FF80
+
+DMAPRG
+		LD	A,>ObjRam				;#C0
+		LDZ	(#FF46),A
+
+		LD	A,#40					;WAS #28
+@XX		DEC	A
+		JR	NZ,@XX
+		RET
+
+****************************************
+*	   CLEAR OBJECT TABLE
+****************************************
+
+CLR_OBJECTS	
+
+;		LD	HL,OBJPTR
+;		LD	DE,OBJRAM
+;		LD	(HL),E
+;		INC	HL
+;		LD	(HL),D
+	
+		LD	HL,OBJRAM
+		XOR	A
+
+		DO	160
+		LD	(HLI),A
+		LOOP
+		RET
+
+****************************************
+*       WAIT FOR FRAME FLYBACK
+****************************************
+
+WAIT_FLY:
+
+		PUSH	AF
+		EI
+		
+;		ld		a,(CGBFlag)
+;		and		a
+;		jr		z,@fly2
+
+		
+;		XOR	A
+;		LD	(VBLFLAG),A
+
+@WAIT	LD	A,(VBLFLAG)
+		cp	2
+		JP	c,@WAIT
+
+		XOR	A
+		LD	(VBLFLAG),A
+
+		POP	AF
+		RET
+
+;		XOR	A
+;		LD	(VBLFLAG),A
+
+
+WAIT_FLY_GB:
+
+		PUSH	AF
+		EI
+		
+@fly2:	
+		LD		A,(VBLFLAG)
+		cp		1
+		JP		c,@fly2
+
+		XOR		A
+		LD		(VBLFLAG),A
+
+		POP		AF
+		RET
+
+****************************************
+*       WAIT FOR FRAME FLYBACK
+****************************************
+
+WAIT_FLY2	PUSH	AF
+
+@WAIT		LDZ	A,(LY)
+		CP	140
+		JP	NZ,@WAIT
+
+		LD	A,50
+@WAIT2		DEC	A
+		JP	NZ,@WAIT2
+
+		POP	AF
+		RET
+
+****************************************
+*	   CLEAR BOTH SCREENS
+****************************************
+
+CLS		CALL	WAIT_FLY
+
+ 		LD	A,0
+
+CLS_FILL
+		LD	HL,#9800
+		LD	B,0
+
+@LOOP	CALL	WAIT_STAT
+
+		xor		a
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+     
+		CALL	WAIT_STAT
+
+		xor		a
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+	
+		dec	b
+		jr	nz,@LOOP
+
+
+CLS_VBK
+		ld	a,1
+		ldz	(vbk),a
+
+ 		LD	A,0
+ 		
+		LD	HL,#9800
+		LD	B,0
+
+@LOOP	CALL	WAIT_STAT
+		xor		a
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+     
+		CALL	WAIT_STAT
+		xor		a
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+	
+		dec		b
+		jr	nz,@LOOP
+
+		ld	a,0
+		ldz	(vbk),a
+
+		RET
+
+****************************************
+*    LOCATE CHAR ON MAP
+* 		  IN BC
+****************************************
+
+CHPOS		LD	L,B
+		LD	H,0
+		ADD	HL,HL
+		ADD	HL,HL
+		ADD	HL,HL
+		ADD	HL,HL
+		ADD	HL,HL
+		LD	B,0
+		ADD	HL,BC
+		LD	BC,#9800
+		ADD	HL,BC
+		RET
+
+ 
+FASTMODE:
+
+	ld		a,(CGBFLAG)
+	and		a
+	ret		z
+
+	; Use to avoid bugs
+	LDZ	A,(KEY1)
+	BIT	7,A
+	RET	NZ		; Already in double-speed mode
+	;
+	LD	A,%00000001
+	LDZ	(KEY1),A	; Enable speed switching 
+
+	LDZ	A,(IE)
+	PUSH	AF
+
+	XOR	A
+	LDZ	(IE),A
+
+	LD	A,%00110000	; Bit45Set, Bit0123 ignored even if writing 
+	LDZ	(P1),A
+
+	STOP
+@WAIT 
+	LDZ	A,(KEY1)
+	BIT	7,A
+	JR	Z,@WAIT		; Wait until CPU operating speed changed and system clock reset. 
+
+	XOR	A			; Bit45Reset
+	LDZ	(P1),A
+	LDZ	(IF),A
+
+	POP	AF
+	LDZ	(IE),A
+	RET
+
+;-----------------------------------------------------------------------------
+; USE: A
+; Since speed switching is a bit complicated, please refer to the manual also.  
+
+NORMALMODE:
+ 
+	; For avoiding bugs 
+	LDZ	A,(KEY1)
+	BIT	7,A
+	RET	Z		; Already in the normal mode 
+
+	LD	A,%00000001
+	LD	(KEY1),A	; Enable speed switching 
+
+	LDZ	A,(IE)
+	PUSH	AF
+
+	XOR	A
+	LDZ	(IE),A
+
+	LD	A,%00110000	; Bit45Set, Bit0123 ignored even if writing 
+	LDZ	(P1),A
+
+	STOP
+
+@WAIT 
+
+	LD	A,(KEY1)
+	BIT	7,A
+	JR	NZ,@WAIT	; Wait until CPU operation speed changed and system clock reset. 
+
+	XOR	A		; Bit45Reset
+	LD	(P1),A
+	LD	(IF),A
+
+	POP	AF
+	LD	(IE),A
+	RET

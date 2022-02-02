@@ -1,0 +1,285 @@
+********************************************************************************
+*						Palette Resource Handlers
+* 		     		 (C) Copyright A.R.Hartley 1999
+********************************************************************************
+
+****************************************
+*        DISPLAY COLOUR SPRITE
+*
+*	  HL = PALETTE NUMBER
+****************************************
+
+SetObjPal:
+	 	ld		a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GBC_pal	;is this the correct type
+		jp		nz,retbank1		;return if not
+
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		ld		b,64
+		ld		c,0
+@loop:
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		ld		a,c
+		ldz		(OCPS),a
+
+		ld		a,(hli)
+		ldz		(OCPD),a
+
+		inc		c
+		dec		b
+		jr		nz,@loop
+		ret1
+
+****************************************
+*        DISPLAY COLOUR SPRITE
+*
+*	  HL = PALETTE NUMBER
+****************************************
+
+SetBGPal:
+	 	ld		a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		cp		Type_GBC_pal	;is this the correct type
+;		jp		nz,retbank1		;return if not
+
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		ld		b,64
+		ld		c,0
+@loop:
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		ld		a,c
+		ldz		(BCPS),a
+
+		ld		a,(hli)
+		ldz		(BCPD),a
+
+		inc		c
+		dec		b
+		jr		nz,@loop
+		ret1
+
+****************************************
+*        DISPLAY COLOUR SPRITE
+*
+*	  HL = PALETTE NUMBER
+****************************************
+
+SetPalette:
+	 	ld		a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		ld		d,a				;save the  pal type
+		
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		ld		b,64
+		ld		c,0
+
+		ld		a,d
+		cp		Type_GBC_pal	;is this the correct type
+		jr		z,@ObjPal
+
+		cp		Type_BGBC_pal	;is this the correct type
+		jr		z,@BakPal
+
+		ret1
+
+
+@ObjPal:
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		ld		a,c
+		ldz		(OCPS),a
+
+		ld		a,(hli)
+		ldz		(OCPD),a
+
+		inc		c
+		dec		b
+		jr		nz,@ObjPal
+		ret1
+
+@BakPal:
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		ld		a,c
+		ldz		(BCPS),a
+
+		ld		a,(hli)
+		ldz		(BCPD),a
+
+		inc		c
+		dec		b
+		jr		nz,@BakPal
+		ret1
+
+****************************************
+*        Mask a palette
+*	 	  de = Palette
+****************************************
+
+MaskPalette:
+
+	 	ld		a,ResBank		;SET RESOURCE PTR BANK
+		setbank
+
+		ld		h,d
+		ld		l,e
+
+		add		hl,hl			;hl * 4
+		add		hl,hl
+		set		6,h				;make addr #4000+
+
+		ld		a,(hli)			;get type
+		ld		d,a				;save the  pal type
+		
+		ld		e,(hl)			;get res bank
+		inc		l
+
+		ld		a,(hli)			;get res ptr addr
+		ld		h,(hl)
+		ld		l,a
+
+		ld		a,e				;set the res bank
+		setbank
+
+		ld		b,32
+		ld		c,0
+
+		ld		a,d
+		cp		Type_GBC_pal	;is this the correct type
+		jr		z,@ObjPal
+
+		cp		Type_BGBC_pal	;is this the correct type
+		jr		z,@BakPal
+		ret1
+
+@ObjPal:
+
+		ld		a,(hli)			;Get Pal color low
+		ld		e,a
+		
+		ld		a,(hli)
+		ld		d,a				;Get Pal color high
+
+		or		e				;is this a nonzero color
+		jr		z,@next			;jump if not
+
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		ld		a,c				;Write color low part
+		ldz		(OCPS),a
+		ld		a,e
+		ldz		(OCPD),a
+
+		ld		a,c				;Write color high part
+		inc		a
+		ldz		(OCPS),a
+		ld		a,d
+		ldz		(OCPD),a
+
+@next:
+		inc		c
+		inc		c
+		
+		dec		b
+		jr		nz,@ObjPal
+		ret1
+
+@BakPal:
+		ld		a,(hli)			;Get Pal color low
+		ld		e,a
+		
+		ld		a,(hli)
+		ld		d,a				;Get Pal color high
+
+		or		e				;is this a nonzero color
+		jr		z,@next1		;jump if not
+
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		ld		a,c				;Write color low part
+		ldz		(BCPS),a
+		ld		a,e
+		ldz		(BCPD),a
+
+		ld		a,c				;Write color high part
+		inc		a
+		ldz		(BCPS),a
+		ld		a,d
+		ldz		(BCPD),a
+
+@next1:
+		inc		c
+		inc		c
+		
+		dec		b
+		jr		nz,@BakPal
+		ret1
+
+****************************************
+*        Set BG Color 1
+*	 	  hl = Color
+****************************************
+
+SetBG0:
+		WaitVideo				;WAIT FOR CORRECT TIME
+
+		xor		a
+		ldz		(BCPS),a
+
+		ld		a,l
+		ldz		(BCPD),a
+
+		ld		a,1				;Write color high part
+		ldz		(BCPS),a
+		ld		a,h
+		ldz		(BCPD),a
+		ret
+

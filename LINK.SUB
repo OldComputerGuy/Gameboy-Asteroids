@@ -1,0 +1,421 @@
+********************************************************************************
+*		         Gameboy to Gameboy link programs
+*                Copyright A.R.Hartley 1992-1999
+*
+*				  revised for Asteroids 28/03/99
+********************************************************************************
+
+****************************************
+*	     game signature bytes
+*        ~~~~~~~~~~~~~~~~~~~~
+*   be careful not to have the same
+*      signature as another game
+****************************************
+
+linkpad1	equ	#aa
+linkpad2	equ	#55
+
+linksign1	equ	"a"		;alter this for your game signature
+linksign2	equ	"s"	
+linkend		equ	"t"
+
+********************************************************************************
+*          		   initialise linkup
+*			  	   ~~~~~~~~~~~~~~~~~
+*	        run this in the initialise of the game
+********************************************************************************
+
+			MemB	Master
+			MemB	Connect
+			MemB	LinkOn
+			MemB	InKeys
+			MemB	InTrig
+			MemB	InOrKeys
+
+bigtimeout	equ	50000	;50000		;disconnect time
+outtime		equ	1000	;500		;quick link time (GetByte)
+SlaveDelay	equ	100		;25			;get ahead time (Connect)
+
+InitLink:
+			xor		a
+			ld		(master),a		;listen
+			ld		(connect),a		;not connected
+			ld		(LinkOn),a
+			ret
+InitLinkOn:
+			xor		a
+			ld		(master),a		;listen
+			ld		(connect),a		;not connected
+			inc		a
+			ld		(LinkOn),a
+			ret
+
+****************************************
+*	    Sync the link
+****************************************
+
+SyncLink:
+			ld		a,(Connect)
+			cp		1
+			ret		z
+			
+			call	InitLink			
+			call	MakeLink
+			ret
+
+********************************************************************************
+*	      		      handle link
+*			    	  ~~~~~~~~~~~
+*			     returns in a
+*
+*		       0 = no change in link
+*		       1 = link has been established
+*		      -1 = link has been disconnected
+*
+*		nb. when gameboys are linking (connect) = 1
+*	the other machines keys will be in (inkeys) and (intrig)
+*
+********************************************************************************
+
+HandleLink:
+			ld		a,(LinkOn)
+			and		a
+			ret		z
+
+			ld		a,(Connect)
+			cp		-1
+			jp		z,@discon
+
+			and		a
+			jp		z,MakeLink
+
+			call	MaintainLink
+
+			xor		a			;say all ok
+			ret
+
+@discon:	ret					;so showdisconnect
+
+****************************************
+*	    Maintain the link
+****************************************
+
+MaintainLink:
+			ld		a,(Master)
+			and		a
+			jp		z,MasterIO
+			jp		SlaveIO
+
+****************************************
+*	     Make the link
+****************************************
+
+MakeLink:
+			call	Random
+			and		8
+			jp		z,TryConnect
+
+			call	WaitConnect
+			ret
+
+********************************************************************************
+*			low level link programs
+********************************************************************************
+
+****************************************
+*      		get byte
+****************************************
+
+GetByte	ld	hl,outtime	;set timeout
+
+@wait:
+		dec		hl
+		ld		a,h
+		or		l
+		jp		z,@timeout
+
+		ld		a,(sioflag)
+		and		a
+		jp		z,@wait
+
+		ld		a,(sb)
+		ld		c,a
+
+		xor		a
+		ld		(sioflag),a
+
+		ld		a,#80 		;start to listen
+		ldz		(sc),a
+
+		ld		a,c
+		or		a
+		ret
+
+@timeout:
+		scf
+		ret
+
+****************************************
+*      	get byte with big wait
+****************************************
+
+GetByteWait:
+		call	VblOn
+
+		ld		hl,bigtimeout
+		ld		b,5		;4
+
+@wait:
+		dec		hl
+		ld		a,h
+		or		l
+		jp		z,@timeout
+
+		ld		a,(sioflag)
+		and		a
+		jp		z,@wait
+
+		ld		a,(sb)
+		ld		c,a
+
+		xor		a
+		ld		(sioflag),a
+
+		ld		a,#80 		;start to listen
+		ldz		(sc),a
+
+		ld		a,c
+		or		a
+		ret
+
+@timeout:
+		ld		hl,bigtimeout
+
+		dec		b
+		jp		nz,@wait
+
+		scf
+		ret
+
+****************************************
+*             send a byte
+*	        a = byte
+****************************************  
+
+SendByte:
+    	ld		b,SlaveDelay	; let other machine get in front
+
+@delay:
+		nop
+		dec		b
+		jp		nz,@delay
+			       		;other machine should be ready now
+		ldz		(sb),a
+
+		xor		a
+		ld		(sioflag),a
+	
+		ld		a,#81		;now send it 
+		ldz		(sc),a
+
+@wait:
+    	ld		a,(sioflag)	;wait until transmission ended
+		and		a
+		jp		z,@wait
+
+		xor		a      		;clear out int flag
+		ld		(sioflag),a
+
+		ld		a,#80		;listen
+		ldz		(sc),a
+
+		ret
+
+****************************************
+*       try to make a connection
+****************************************
+
+TryConnect:
+		ld		a,linkpad1	 	;send a byte
+		call	sendbyte
+
+		call	getbyte			;get a byte
+		jp		c,@rubbish		;error if timeout
+
+		cp		linkpad2		;is it the correct padbyte
+		jp		nz,@rubbish		;jump if not
+
+		ld		a,linksign1		;send game signature bytes
+		call	sendbyte
+
+		ld		a,linksign2
+		call	sendbyte
+
+		call	getbyte		;get a byte
+		jp		c,@rubbish		;error if timeout
+
+		cp		linkend   		;is it link confirm byte
+		jp		nz,@rubbish		;jump if not
+
+		ld		a,1			;say connected
+		ld		(connect),a
+
+		ld		a,1	  		;i'm your master !!
+		ld		(master),a
+
+		ld		a,1			;signal say connected
+		ret
+
+@rubbish:
+		ld		a,0
+		scf				;say not connected
+		ret
+
+****************************************
+*	  waiting to connect
+****************************************
+
+WaitConnect:
+		call	VblOff
+
+		call	getbyte		;get a byte
+		jp		c,@rubbish		;error if timeout
+
+		cp		linkpad1		;is this the pad byte
+		jp		nz,@rubbish		;jump if not
+
+		ld		a,linkpad2
+		call	sendbyte
+
+		call	getbyte		;get a byte
+		jp		c,@rubbish		;error if timeout
+		cp		linksign1
+		jp		nz,@rubbish
+
+		call	getbyte		;get a byte
+		jp		c,@rubbish		;error if timeout
+
+		cp		linksign2
+		jp		nz,@rubbish
+
+		ld		a,linkend
+		call	sendbyte
+
+		ld		a,1			;say connected
+		ld		(connect),a
+
+		xor		a	  		;i'm your slave !!!
+		ld		(master),a
+
+		call	vblon
+
+		ld		a,1			;signal say connected
+		ret
+
+@rubbish:
+		ld		a,#80 			;start to listen
+		ldz		(sc),a
+
+		call	vblon
+
+		xor		a			;clear signal no connect
+
+		scf				;say not connected
+		ret
+
+****************************************
+*	     switch vbl off
+****************************************
+
+VblOff:
+		ld		a,%00001000
+		ld		(ie),a
+		ret
+
+VblOn:
+		ld		a,%00001101
+		ld		(ie),a
+		ret
+
+****************************************
+*	  do communications
+****************************************
+
+GetIO:
+		ld		a,(connect)	;are we connected to a gameboy ?
+		cp		1
+		ret		nz
+
+		ld		a,(master)
+		and		a
+		jp		z,MasterIO
+
+		jp		SlaveIO
+
+****************************************
+*	   master's io routine
+****************************************
+
+MasterIO:
+		call	VblOff
+
+		ld		a,(keys) 	;send my keys
+		call	sendbyte
+
+		call	getbytewait
+		jp		c,disconnect
+
+		ld		c,a
+
+		ld		a,(inkeys)
+		xor		c
+		and		c
+		ld		(intrig),a
+				
+		ld		a,c
+		ld		(inkeys),a
+
+		call	VblOn
+		ret
+	
+****************************************
+*	   slave's io routine
+****************************************
+
+SlaveIO:
+		call	VblOff
+
+		call	getbytewait	;get others keys
+		jp		c,disconnect
+
+		ld		c,a
+
+		ld		a,(inkeys)
+		xor		c
+		and		c
+		ld		(intrig),a
+
+		ld		a,c
+		ld		(inkeys),a
+	
+		ld		b,5		;100 ;make sure he's over taken me
+@loop:
+		dec		b
+		jp		nz,@loop
+	
+		ld		a,(keys)	;send slave keys
+		call	SendByte
+
+		call	VblOn
+		ret
+
+****************************************
+*	disconnect communications
+****************************************
+
+Disconnect:
+		ld		a,-1
+;		xor		a
+		ld		(connect),a
+
+		jp		VblOn

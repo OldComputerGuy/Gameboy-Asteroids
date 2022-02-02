@@ -1,0 +1,2501 @@
+
+;**************************************
+;ram data
+
+	MEMB	Domszone		;first zone to start game		
+	MEMB	game_type		;0	single
+							;1	password	level set up only
+							;2	classic
+							;3	turnbased
+							;4	competitive
+							;5	scavenger
+							;6	tag
+							
+	MEMB	linkgame			;0 no cable 1 cable
+	MEMB	demomode
+	
+	MEMB	ship_type			;ship type	
+	MEMB	PLives				;Player lives
+	MEMW	PScore				;Player Score
+	MEMB	PLevel				;Player Level
+	MEMB	PZone				;Player Zone
+	
+	;these 3 MUST follow
+	MEMB	game_diff			;0=easy etc
+	MEMB	music_vol			;can replace with tony's global
+	MEMB	sfx_vol				;ditto
+	
+	MEMB	rounds				;for link games
+	MEMB	leveltime
+	
+	MEMB	ship_unlock			;hidden ship
+	MEMB	Classic_unlock		;classic game availible
+	
+	MEMB	option_type			;used for menus
+	MEMB	menu_option
+	MEMW	menu_timer
+	MEMB	menu_position
+								;key varibles
+	MEMB	config				;if non-zero remap keys
+	MEMB	default_keyset		;must preceed config_ram
+	MEMS	config_ram,6
+	MEMS	config_ram2,6
+	MEMS	defaultram,30
+	
+	MEMS	Password_ram,9
+
+	MEMB	gametime
+	
+	MEMB	game_status
+	MEMB	game_delay
+	MEMB	Text_Status
+	MEMB	Text_Delay
+	MEMB	NumactivePlys			;for turnbased mode
+****************************************
+*		Buffers for Player Data Turnbased only
+****************************************
+
+P1Buf equ MBASE
+
+	MEMB	ShipType1			;ship type	
+	MEMB	PLives1				;Player lives
+	MEMW	PScore1
+	MEMB	PLevel1
+	MEMB	PZone1
+	MEMB	GameDiff1			;0=easy etc
+	MEMB	MusicVol1			;can replace with tony's global
+	MEMB	SFXVol1				;ditto
+
+P2Buf equ MBASE
+
+	MEMB	ShipType2			;ship type	
+	MEMB	PLives2				;Player lives
+	MEMW	PScore2
+	MEMB	PLevel2
+	MEMB	PZone2
+	MEMB	GameDiff2			;0=easy etc
+	MEMB	MusicVol2			;can replace with tony's global
+	MEMB	SFXVol2				;ditto
+
+;*********************************
+;unfinished functions
+
+Movie_intro:
+		ret
+
+Reset_Level_Lives:
+		ld		a,3
+		ld		(PLives1),a
+		xor		a
+		ld		(Pscore1),a
+		ld		(PScore1+1),a
+		ld		a,1
+		ld		(PZone1),a
+		ld		(PLevel1),a
+		ld		hl,P1Buf
+		xor		a
+		call	SetShipVar		;ready to go
+	
+		ld		a,(game_type)
+		cp		3
+		ret		c
+		ld		c,a
+		ld		a,3
+		ld		(PLives2),a
+		xor		a
+		ld		(Pscore2),a
+		ld		(PScore2+1),a
+		ld		a,1
+		ld		(PZone2),a
+		ld		(PLevel2),a
+		ld		a,c
+		cp		4
+		jr		nc,@link
+		ld		a,1
+		ld		(NumactivePlys),a		
+		ret
+
+@link	
+@master	ld		a,(master)
+		and		a
+		jr		nz,@slave
+		ld		hl,P1Buf
+		xor		a
+		call	SetShipVar		;ready to go
+		ld		hl,P2Buf
+		ld		a,1
+		jp		SetShipVar
+		
+@slave
+		ld		hl,P1Buf
+		ld		a,1
+		call	SetShipVar		;ready to go
+		ld		hl,P2Buf
+		xor		a
+		jp		SetShipVar
+		
+			
+		
+	
+
+;Test_Link:
+;		ret
+
+Display_Mission_screen
+		jp	Display_Consol_Screen
+		
+
+Normal_Palette	equ	7	
+Bright_Palette	equ 4	
+
+
+
+
+storemenu_P2Var:					
+			ld		a,(ship_type)
+			ld		(ShipType2),a
+			ld		a,(game_diff)
+			ld		(GameDiff2),a
+			ld		a,(music_vol)
+			ld		(musicvol2),a
+			ld		a,(sfx_vol)
+			ld		(SFXVol2),a
+			ld		a,3
+			ld		(Plives2),a
+			ret
+		
+		
+storemenu_P1Var:	
+			ld		a,(ship_type)
+			ld		(ShipType1),a
+			ld		a,(game_diff)
+			ld		(GameDiff1),a
+			ld		a,(music_vol)
+			ld		(musicvol1),a
+			ld		a,(sfx_vol)
+			ld		(SFXVol1),a
+			ld		a,3
+			ld		(Plives2),a
+			ret
+					
+;*********************************************
+
+START:
+;		call	DetectEmu
+
+;		ld		a,MIDI_Introb
+;		ld		d,1
+;		call	PlayMusic
+
+;		call	Boot					;Dom's shell
+
+
+
+Boot:
+		call	InitKeyTable
+		
+;set at begining of game only
+		ld		a,2
+		ld		(music_vol),a
+		ld		(sfx_vol),a
+		ld		(leveltime),a
+		ld		(rounds),a		
+				
+		ld		a,1
+		ld		(domszone),a
+		
+		ld		(classic_unlock),a		;testing only
+		
+		call	Clr_Game_Vars
+		call	Init_Game_Scr
+
+		call	InitCollisions
+		call	InitTasks
+		call	InitSprites
+		call	InitSeqs
+
+		call	Menu_logos
+
+Demo_loop:
+		call	Menu_movies			;asteroids logo
+		call	Movie_intro
+
+New_game:
+
+		call	initlink
+		
+		xor		a
+		ld		(demomode),a
+		
+@a0:	call	Menu_main				
+		and		a	
+		jp		z,Single_game
+		cp		1
+		jp		z,Multi_game
+		cp		3
+		jp		z,Classic_game
+		cp		2
+		jr		nz,@a1
+		
+		call	Menu_Options
+		jr		@a0
+		
+@a1:	call	Menu_Hiscore
+		cp		255
+		jp		nz,New_game		;key pressed
+	
+		ld		a,1
+		ld		(demomode),a
+		xor		a
+		ld		(game_type),a
+		jp		Ready			;play demo
+		
+
+Single_game:
+		call	Menu_single
+		ld		e,0
+		and		a				;flag for Start_game
+		jp		z,Start_game
+		cp		1	
+		jr		z,@Password
+
+		jp		New_Game
+		
+@Password:
+		call	Menu_Password		;a=0 none else 1-5
+		cp		253				;select
+		jr		z,Single_game
+		
+		ld		(domszone),a
+				
+		ld		e,1				;password game
+		and		a				;have reset password
+		jp		nz,Start_game
+				
+		jr		Single_game		;invalid password
+
+Multi_game:
+		call	initlinkon
+		call	Menu_multi			
+		cp		4	
+		jp		c,@play
+		call	initlinkon
+		jp		new_game	
+		
+@play		add	a,3
+		ld	e,a
+		jp	Start_game
+
+Classic_game:
+		ld	e,2
+		ld	a,4
+		ld	(Ship_type),a
+		jp	Start_game
+
+Start_game:
+
+
+;0	single
+;1	password	level set up only
+;2	classic
+;3	turnbased
+;4	competitive
+;5	scavenger
+;6	tag
+		ld		a,e
+		ld		(game_type),a
+		cp		2
+		jr		z,Ready			;classic has no ship select
+		
+		jr		nc,@c1
+								
+		call	Menu_selectship	;single player	
+		cp		253				
+		jr		z,Single_game
+		call	storemenu_P1Var
+		jr		Ready
+		
+@c1		cp		3
+		jr		nz,@c2
+								;turnbased
+		call	Menu_selectship
+		cp		253
+		jr		z,Multi_game						
+		call	storemenu_P1Var
+		call	Menu_selectship2
+		cp		253
+		jr		z,Multi_game
+		call	storemenu_P2Var		;ship type ,diff,snd vol, music vol
+		jr		Ready
+
+@c2								;link games
+		xor		a
+		ld		(ship_type),a	;must reset
+		call	Menu_selectship
+		cp		253
+		jr		z,Multi_game
+		call	storemenu_P1Var
+		
+		call	Menu_selectship2
+		cp		253
+		jr		z,Multi_game	
+		call	storemenu_P2Var		
+@L1:
+	;play game depending on gametype
+
+Ready:		
+		call	Reset_Level_Lives		;3 lives no score zone1 level1
+		call	Play_game
+
+		call	ClearSeqs
+		call	InitSpr
+		LD		A,1
+		LD		(DMA_GO),A
+		call	Wait_Fly
+		
+		jp		New_game
+
+;*********************************
+;	mid level functions
+;*********************************
+
+Menu_main:
+		call	Display_Consol_Screen
+		ld		hl,10*60
+		stm		menu_timer,hl
+	
+@Loop1:
+		call	Print
+		db		at,15,1,"DEMO NOT FOR RESALE",stop
+
+		ld		a,(EmuDetect)
+		and		a
+		jr		z,@ok
+
+		call	Print
+		db		at,17,0,"*EMU*",stop
+
+@ok:
+					;select between 1,2 or classic
+		ld		a,(classic_unlock)
+		add		a,3
+		ld		d,a
+		ld		e,1
+		call	Menu_control	
+			
+		ld		hl,menu_data_main1
+		ld		a,(classic_unlock)
+		and		a
+		jr		z,@b1
+		
+		ld		hl,menu_data_main2
+		
+@b1:	call	Menu_text
+
+		call	Menu_Update_Exit
+		jr		z,@Loop1										
+					;rets menu_option or 255 no press
+		ret
+
+;*********************************
+;
+;*********************************
+
+Menu_single:
+		
+		call	Display_Consol_Screen
+		ld		hl,0
+		stm		menu_timer,hl
+	
+@Loop1:	ld		de,#201			
+		
+		call	Menu_control	
+	
+		ld		hl,menu_data_single
+		call	Menu_text
+
+		call	Menu_Update_Exit
+		jr		z,@Loop1
+	
+@L2:			
+		
+		ret
+;*********************************
+;piping keys for menus		a= 0 or 1	
+;*********************************
+
+PipeKeysMenu:
+
+		ld		c,a
+		ld		a,(connect)
+		cp		1
+		ret		nz					;not connected so no piping
+		
+		ld		a,c
+		
+		and		a
+		jr		z,@slaveismaster
+
+;master is slave
+		ld		a,(master)
+		and		a
+		ret		nz
+		ld		a,(intrig)			;pipe keys	
+		ld		(trigger),a
+		ret
+		
+@slaveismaster
+		ld		a,(master)
+		and		a
+		ret		z					;
+		ld		a,(intrig)			;pipe keys	
+		ld		(trigger),a
+		ret
+;*********************************
+;	
+;*********************************
+
+;		memb	tconnect ;testing connect
+		
+Menu_multi:
+		ld		a,1
+		ld		(connect),a
+		ld		hl,0
+		stm		menu_timer,hl
+		call	Display_Consol_Screen
+		
+@loop1:	
+		ld		a,(connect)
+		cp		1
+		jr		z,@con
+		
+		call	InitlinkOn
+
+		ld		a,1
+		ld		(menu_option),a				;turnbased only unless linked
+		jr		@a2
+		
+@con	xor		a
+		call	PipeKeysMenu				;a=0 slave does as master
+		ld		a,(menu_option)
+		cp		1
+		jr		nz,@cc1
+		ld		a,2
+		ld		(menu_option),a		;force into 2 if linked
+@cc1	ld		de,#402
+								;allow multiplayer
+		call	Menu_control	
+@a2:			
+	
+		ld		hl,menu_data_multi
+		call	Menu_text
+		xor		a
+		call	Menu_Update_Exit_link
+		jr		z,@Loop1
+		
+		cp		0
+		ret		z			;turnbased
+		cp		1
+		ret		z			;competitive
+		cp		253
+		ret		z
+		
+		push	af			;set up rounds
+		ld		a,1
+		ld		(menu_option),a
+		
+		
+@loop2	xor		a
+		call	PipeKeysMenu
+
+		ld		de,#201		
+		call	Menu_control
+
+		ld		a,(menu_option)
+		cp		1
+		jr		nz,@b2
+		ld		hl,rounds
+		ld		de,#500
+		jr		@change
+		
+@b2:	ld		hl,leveltime
+		ld		de,#400
+					
+@change	ld		a,(hl)
+		call	menu_choice
+		ld		(hl),a
+
+
+		ld	hl,menu_data_multi2		
+		call	Menu_text
+	
+		ld		a,(rounds)
+		ld		bc,#60f
+		ld		hl,switch_text_data_rounds
+		ld		e,1
+		call	Print_switch_text_color
+
+		ld		a,(leveltime)
+		ld		bc,#80f
+		ld		hl,switch_text_data_time
+		ld		e,2
+		call	Print_switch_text_color
+		
+		xor		a
+		call	Menu_Update_Exit_link
+		jr		z,@Loop2
+		cp		253
+		jp		nz,@kk				;select go back
+		
+		pop		af
+		jp		@loop1	
+	
+@kk		ld		bc,rounds
+		ld		hl,convertrounds
+		call	@convert
+	
+		ld		bc,leveltime
+		ld		hl,convertime
+		call	@convert
+		
+		pop		af	
+		ret
+
+@convert
+		ld		a,(bc)
+		ld		e,a
+		ld		d,0		
+		add		hl,de
+		ld		a,(hl)
+		ld		(bc),a
+		ret
+
+
+;*********************************
+;	
+;*********************************
+
+Menu_Hiscore:
+
+		call	Display_Consol_Screen
+		ld		hl,5*60
+		stm		menu_timer,hl
+
+@loop1	
+		call	Print
+		db		at,2,6,"HI SCORE"
+	
+		db		at,4,4,"%w"
+		dw		HiScore
+		db		at,5,4,"%w"
+		dw		HiScore+2
+		db		at,6,4,"%w"
+		dw		HiScore+4
+		db		at,7,4,"%w"
+		dw		HiScore+6
+		db		at,8,4,"%w"
+		dw		HiScore+8
+		db		at,9,4,"%w"
+		dw		HiScore+10
+		db		at,10,4,"%w"
+		dw		HiScore+12
+		db		at,11,4,"%w"
+		dw		HiScore+14
+		db		at,12,4,"%w"
+		dw		HiScore+16
+		db		at,13,4,"%w"
+		dw		HiScore+18
+
+
+		db		stop
+
+
+
+
+		call	Menu_Update_Exit
+		jr	z,@Loop1
+		
+		ret
+
+		if	0
+
+check_hiscore
+;****************************
+;*check hiscore table and insert returns 0 none else pos 1 to 10
+;****************************
+
+		ld	hl,hiscore
+		ld	b,10
+
+@loop1
+		ld		e,(hli)
+		ld		d,(hli)
+		push	hl
+		ldm		hl,(PanelScore)
+		sbt		hl,de
+		bit		7,h
+		
+		jr		nz,@bigger
+		
+		pop		hl
+		dec		b
+		jp		nz,@loop1
+		xor		a					;not in top scores
+		ret
+
+@bigger
+		pop		hl
+		ld		a,b
+		dec		a
+		jr		z,@loop3
+		ld		c,a					;number of shifts
+		ld		hl,hiscore+17
+		ld		de,hiscore+19
+		
+@loop2	ld		a,(hld)
+		ld		(de),a
+		dec		de
+		ld		a,(hld)
+		ld		(de),a
+		dec		de
+		dec		c
+		jr		nz,@loop2
+			
+@loop3	ld		a,10
+		sub		b
+		add		a,a
+		ld		e,a
+		ld		d,0
+		ld		hl,hiscore
+		add		hl,de
+		ld		de,panelscore
+		ld		a,(de)
+		ld		(hli),a
+		inc		de
+		ld		a,(de)
+		ld		(hl),a	
+		
+		ld		a,11
+		sub		b
+		ret				;a=1 to 10 postion in table
+
+		endif
+
+********************
+;called as a sub-routine
+*******************
+
+Menu_options:
+		ld		hl,0
+		stm		menu_timer,hl
+		call	Display_Consol_Screen
+	
+@Loop1:	ld		de,#601			;select between 1,6
+		call	Menu_control	
+			
+		ld		a,(menu_option)
+		cp		1
+		jr		z,@b99
+		
+;		cp		2
+;		jr		nz,@b1
+;		ld		hl,game_diff		
+;		ld		de,#300
+;		jr		@change
+
+@b1:	cp		2
+		jr		nz,@b2
+		ld		hl,music_vol
+		ld		de,#300
+		jr		@change
+@b2:	cp		4			;ie 3
+		jr		nc,@b99
+		ld		hl,sfx_vol
+		ld		de,#300
+					
+@change	ld		a,(hl)
+		call	menu_choice
+		ld		(hl),a
+
+@b99:		
+		ld		hl,menu_data_options
+		call	Menu_text
+
+;		ld		a,(game_diff)
+;		ld		bc,#80f-3
+;		ld		hl,switch_text_data_diff
+;		ld		e,2
+;		call	Print_switch_text_color
+
+		ld		a,(music_vol)
+		ld		bc,#80f
+		ld		hl,switch_text_data_loud
+		ld		e,2
+		call	Print_switch_text_color
+
+		ld		a,(sfx_vol)
+		ld		bc,#a0f
+		ld		hl,switch_text_data_loud
+		ld		e,3
+		call	Print_switch_text_color
+						
+		call	Menu_Update_Exit				
+		jp		z,@Loop1
+	
+		and	a
+		jp	z,Menu_config
+
+		cp	3
+		jp	z,menu_credits
+	
+		cp	4
+		ret	z					;exit
+		
+;act on options here
+			
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Menu_config:
+		ld		hl,0
+		stm		menu_timer,hl
+		call	Display_Consol_Screen
+
+;set up config_ram
+		ld		a,(config)
+		and		a
+		jr		nz,@loop1
+		
+		xor	a
+		ld	(config),a
+		call	configramcopy
+		call	setdefaultkeys	;copy data into ram (to keep custom ram)
+
+@Loop1:	
+									;only allow for key movement if on custom 
+		ld		a,(config_ram-1)
+		cp		4
+		jr		z,@apple
+
+		
+		ld		de,#801
+		call	Menu_control
+
+		ld		a,(menu_option)
+		cp		1
+		jr		z,@force
+		cp		7
+		ld		a,1
+		jr		z,@force
+		
+		ld		a,8				;exit
+@force	ld		(menu_option),a
+		jr		@pear
+		
+@apple	ld		de,#801
+		call	Menu_control	
+
+@pear	
+		ld		hl,menu_data_config
+		call	Menu_text
+
+		ld		b,0		;counter
+
+		ld		hl,config_ram-1		;default_keyset
+
+@Loop2:	push	bc
+		push	hl			
+	
+		ld		d,7					;normal ink color	
+		ld		a,(menu_option)
+		dec		a
+		ld		e,a
+		cp		b
+		jr		nz,@E2	
+		ld		d,4
+@E2:	ld		a,d
+		ld	(ThisPal),a				;set print color
+		
+		ld		a,e					;menu_option-1
+		and		a
+		jr		nz,@DN1
+
+;resesting defaults
+	
+@default_choice
+		ld		d,5					;four default options		
+		ld		a,(hl)		
+		
+		call	Menu_choice
+		cp		(hl)
+		jr		z,@DN0
+		ld		(hl),a
+		call	setdefaultkeys		;new ones here
+@DN0:						;increment
+
+@DN1:	ld		a,b					;loop counter
+		and		a
+		jr		nz,@normal_choice
+		ld		b,3					;coords
+		ld		c,11
+		ld		a,(hl)	
+		ld		hl,switch_text_data_default
+		call	Print_switch_text
+		jp		@NN1
+
+@normal_choice
+		ld		a,(menu_option)
+		dec		a
+		ld		e,a
+		cp		b
+		jr		nz,@N1
+		ld		d,6		
+		ld		a,(hl)		
+		call	Menu_choice
+		ld		(hl),a
+@N1:
+		ld	a,b
+		add	a,a
+		add	a,3
+		ld	b,a
+		ld	c,11
+		ld	a,(hl)	
+		ld	hl,switch_text_data_control	
+		call	Print_switch_text
+
+@NN1:
+		pop	hl
+		inc	hl
+		pop	bc
+		inc	b
+		ld	a,b
+		cp	7
+		jp	c,@Loop2	
+
+		call	Menu_Update
+			
+	
+		call	Menu_exit		
+		jp		z,@Loop1
+
+		ld		a,(config_ram-1)
+		cp		4
+		jr		nz,@aa10
+		
+		call	Check_Valid				;if custom keys only
+		jp		nz,Menu_config			;not valid
+		
+;copy into ram buffer here
+		ld		hl,config_ram
+		ld		de,defaultram+24
+		ld		b,6
+@l1		ld		a,(hli)
+		ld		(de),a
+		inc		de
+		dec		b
+		jr		nz,@l1							
+		
+@aa10:	
+
+;do actual key congigure
+;set up bit patterns from config_ram
+
+		ld		hl,config_ram
+		ld		b,6
+		ld		c,0					;test to see if reconfiged
+
+@loop5:	ld		e,(hl)
+
+		ld		a,e					;see if reconfiged
+		cp		c
+		jr		z,@g1
+		ld		c,128				;a difference			
+@g1		inc		c
+
+		ld		d,0
+		push	hl
+		ld		hl,remap_key_data
+		add		hl,de
+		ld		a,(hl)				;mask for this key		
+		
+		pop		hl
+		ld		e,6
+		add		hl,de				;config_ram2 
+		ld		(hl),a
+		ld		de,-5
+		add		hl,de
+		
+		dec		b
+		jr		nz,@loop5
+		
+		ld		a,c
+		cp		6
+		ret		z		
+		
+		ld		a,1
+		ld		(config),a			;we have reconfiged 
+		
+		call	BuildKeyTable		;Build_Remap_table	
+		ret
+
+;leaves every reg alone
+;*********************************
+;	
+;*********************************
+
+Configramcopy
+		ld		hl,default1			;copy into ram
+		ld		de,defaultram		
+		ld		b,30
+@gh:		ld		a,(hli)
+		ld		(de),a
+		inc	de
+		dec	b
+		jr	nz,@gh		
+		ret
+
+Setdefaultkeys:
+		push	af
+		push	bc
+		push	de
+		push	hl
+		
+				
+		ld	a,(default_keyset)
+		add	a,a
+		ld	e,a
+		add	a,a
+		add	a,e
+		ld	e,a
+		ld	d,0
+		ld	hl,defaultram
+		add	hl,de
+		ld	de,config_ram
+		
+		ld	b,6
+@l1:		ld	a,(hli)
+		ld	(de),a
+		inc	de
+		dec	b
+		jr	nz,@l1
+		pop	hl
+		pop	de
+		pop	bc
+		pop	af
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Check_Valid
+;see if all choices are different
+		ld		hl,config_ram
+		ld		b,6
+		
+		
+@loop1	ld		de,config_ram		
+@loop2	ld		a,e
+		cp		l
+		jr		z,@done			;same position
+		ld		a,(de)
+		cp		(hl)
+		jr		z,@non_valid	;same key data
+		inc		de
+		jr		@loop2
+		
+@done	inc		hl				;step through list
+		dec		b
+		jr		nz,@loop1
+		xor	a
+		ret		;valid!!!
+		
+@non_valid
+		or	255	;non valid!!
+		ret
+		
+;***********************************
+;*
+;***********************************					
+
+	MEMB demp
+
+Menu_Password:
+		xor	a
+		ld	(menu_position),a
+		ld	(demp),a
+		
+		ld	a,"X"
+		ld	hl,Password_ram
+
+		ld	(hli),a
+		ld	(hli),a
+		ld	(hli),a
+		ld	(hli),a
+		ld	(hli),a
+		ld	(hli),a
+		ld	(hli),a
+		ld	(hli),a
+		
+		xor	a
+		ld	(hli),a
+
+		call	Display_consol_screen
+@Loop1:		
+	
+		ld		hl,menu_data_password
+		call	Menu_text
+		
+		ld		a,(demp)
+		ld		bc,#c01
+		ld		hl,switch_text_data_password
+		call	Print_switch_text
+		
+		ld		bc,#A06
+		call	Display_Password
+
+		ld		a,(menu_position)
+		ld		d,8						;number of characters
+		call	Menu_choice
+		ld		(menu_position),a
+
+
+
+
+		ld		e,a
+		ld		d,0
+		ld		hl,Password_ram
+		add		hl,de
+		ld		a,(hl)
+		ld		(menu_option),a
+
+		ld		e,"A"-1
+		ld		d,"Z"+1
+		call	Menu_control
+		
+;check for vowels
+		ld		a,(menu_option)
+		cp		"A"
+		jr		z,@vw
+		cp		"E"
+		jr		z,@vw
+		cp		"I"
+		jr		z,@vw
+		cp		"O"
+		jr		z,@vw
+		cp		"U"
+		jr		nz,@nvw		
+		
+@vw		call	Menu_control		
+@nvw		
+		
+		ld		a,(menu_option)
+		cp		"A"-1
+		jr		nz,@j1
+		ld		a,"Z"
+
+@j1:	cp		"Z"+1
+		jr		nz,@j2
+		ld		a,"B"
+@j2:	ld		(menu_option),a		
+			
+
+		ld		(hl),a
+
+		call	Menu_Update_Exit		
+		jr		z,@Loop1
+
+		cp		253				;select
+		jr		z,@exit
+
+		call	Check_Password
+		jr		z,@gh		
+	
+		ld		(demp),a				;correct password
+	
+		jr		@done
+				
+@gh:
+
+		ld		a,(demp)
+		and		a
+		jr		nz,@done
+		ld		a,7						;error
+		ld		(demp),a
+@done:	
+		ld		a,(demp)				;0=no password 1-4 zone2-5 5over 6classic
+		ld		bc,#c01
+		ld		hl,switch_text_data_password
+		call	Print_switch_text		
+
+		ld		bc,#A06
+		call	Display_Password
+	
+		call	Menu_Update
+		ld		b,3
+		call	waitsecond
+		ld		a,(demp)
+		inc		a						;1st password zone2
+		cp		6
+		jr		c,@d1
+		jr		z,@unlock
+
+;		ld		a,1				;1st zone incorrect password
+		jp		Menu_Password
+		
+@unlock	ld		a,1
+		ld		(classic_unlock),a
+						
+@d1:	ld		(domszone),a		;1-6
+
+@exit:				;turnoff sprite
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Check_Password:
+
+		ld		c,1
+		ld		de,Password1
+		
+@loop1	push	de
+		ld		hl,Password_ram
+		ld		b,8
+		
+@loop2	ld		a,(de)
+		cp		(hl)
+		jr		nz,@next
+		inc		de
+		inc		hl
+		dec		b
+		jr		nz,@loop2
+
+@found	pop		de
+		ld		a,c
+		and		a			;set flags
+		ret								
+
+@next	pop		de
+		ld		hl,8	;password length
+		add		hl,de
+		ld		d,h
+		ld		e,l
+		
+		inc		c
+		ld		a,c
+		cp		6
+		jr		c,@loop1
+		
+		xor		a
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Display_Password:
+		ld	hl,Password_ram
+		ld	de,0
+
+@Loop:	push	de	
+		ld	d,4
+		ld	a,(menu_position)
+		cp	e
+		jr	z,@L2:
+		ld	d,7
+
+@L2:	ld	a,(hl)
+		
+		call	Print_A_Character
+		inc	hl
+		inc	c
+	
+		pop	de
+		inc	e
+		ld	a,e
+		cp	8
+		jr	c,@Loop
+		ret
+
+
+;*********************************************
+; rets a= menu option 255=timeout 254=no pressed z 253=start/select 
+; cp 254 to set zero flag z=no pressed
+;*********************************************
+
+;low level functions here 
+
+Menu_exit:
+
+;test for timer
+		ldm		hl,menu_timer
+		ld		a,l
+		or		h
+		jr		z,@test_key		;no timer here
+
+		ld		a,(trigger)
+		and		a	
+		jr		z,@countdown
+		
+		ld		hl,10*60		;reset timer as key has been pressed
+		
+@countdown
+		
+		dec		hl
+		stm		menu_timer,hl
+		ld		a,l
+		or		h
+		jr		nz,@test_key
+		
+		or		255				;255 out of time rets nz		
+		ret
+
+@test_key:
+
+		ld	a,(trigger)
+		and	KEY_A+KEY_B+KEY_START
+		jr	nz,@pressed
+		
+		ld	a,(trigger)		
+		and	KEY_SELECT
+		jr	nz,@pressed2
+		
+		ld	a,254				;nothing pressed rets z
+		cp	254
+		ret
+
+@pressed
+		ld	a,(menu_option)		;rets option 0-15 nz
+		dec	a
+		cp	254					;
+		ret	
+
+;start or select
+@pressed2
+		ld	a,253
+		cp	254
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Menu_text:
+		ld	e,0		;line counter
+
+@loop:	ld	c,(hl)
+		bit	7,c
+		ret	nz
+
+		inc	hl
+		ld	b,(hl)		;bc = x,y coords
+		inc	hl			;hl = string
+	
+		push	de
+
+
+		ld	a,4		;Bright_palette
+		ld	(ThisPal),a
+		ld	a,(menu_option)
+		cp	e
+		jr	z,@L1
+		ld	a,(cgbflag)
+		and	a
+		jr	z,@jk
+		ld	a,e
+		and	a
+		jr	z,@L1		;title in yellow as well
+		
+@jk		ld	a,7			;Normal_palette
+		ld	(ThisPal),a
+		
+		;inc	c			;indent text as no colors yet
+		;inc	c
+
+	
+@L1:	call PRINTSTRING
+
+		pop	de
+		inc	e
+		jr	@loop
+
+	
+;*********************************
+;	
+;*********************************
+
+Menu_choice:
+;selection acheived with pad lef/right
+
+; a=choice
+; d=maximum number+1
+		push	hl
+		push	af
+		ld	a,(trigger)
+		ld	l,a
+		pop	af
+		bit	BIT_KEY_LEFT,l
+		jr	z,@L1
+		dec	a
+		
+@L1:	bit	BIT_KEY_RIGHT,l	
+		jr	z,@L2
+		inc	a
+@L2:	pop	hl
+		bit	7,a
+		jr	z,@L3
+		ld	a,d
+		dec	a
+		ret
+@L3:	cp	d
+		ret	c
+		xor	a
+		ret	
+
+;*********************************
+;	
+;*********************************
+
+Menu_control:
+; de= allowed range max and min
+		
+		ld	a,(trigger)	
+		bit	BIT_KEY_UP,a
+		jr	z,@L1			;no pressed
+
+		ld	a,(menu_option)	
+		cp	e
+		jr	z,@L1
+		dec	a
+		ld	(menu_option),a		
+@L1:	
+		ld	a,(trigger)	
+		bit	BIT_KEY_DOWN,a
+		jr	z,@L2			;no pressed
+
+		ld	a,(menu_option)
+		cp	d
+		jr	z,@L2		
+		inc	a
+		ld	(menu_option),a
+@L2:		
+		ret
+		
+;*********************************
+;	
+;*********************************
+				
+Print_switch_text_color:	;current line we are printing
+		push	af
+
+		ld		d,4		;normal palette
+		ld		a,(menu_option)
+		cp		e
+		jr		z,@d1
+		ld		d,7
+@d1:			
+		ld		a,d
+		ld		(ThisPal),a
+		pop		af
+
+Print_switch_text:
+	;bc= coords,d=palette,hl=base string, a=option 0 is first
+
+		cp		(hl)
+		ret		nc	;illegal
+		inc		hl	;skip over count
+		ld		e,a
+
+@L1:	ld	a,e
+		and	a
+		jr	z,@L2
+
+;find start of next string
+@L1a:	ld	a,(hli)
+		and	a
+		jr	nz,@L1a
+
+		dec	e
+		jr	@L1
+
+@L2:
+		call	Print_String_Routine	
+		ret
+
+***************************************
+*	     PRINT BLOCK OF TEXT hl=data b=1st row
+****************************************
+Print_Text_Block:
+@a1		push	bc
+		call	Print_String_Central
+		pop		bc
+		
+		;inc		hl
+		inc		b
+		ld		a,(hl)
+		cp		255
+		jr		nz,@a1
+		
+		ret
+
+***************************************
+*	     PRINT A STRING centralised b=row hl=text
+****************************************
+Print_String_Central:
+		push	hl
+		ld		c,0
+@count	ld		a,(hl)
+		and		a
+		jr		z,@done
+		inc		hl
+		inc		c
+		jr		nz,@count	;allows for drop out after 256
+@done	ld		a,20
+		sub		c
+		srl		a
+		ld		c,a			
+		pop		hl
+;		jp		PRINTSTRING
+
+***************************************
+*	     PRINT A STRING
+****************************************
+Print_String_Routine: 
+PRINTSTRING
+
+;BW MODE flash if pal is 4 (hi-lighted)
+
+		ld		a,(cgbflag)
+		and		a
+		jr		nz,@dom
+		ld		a,(ThisPal)
+		cp		4
+		jr		nz,@dom
+		ld		a,(time)
+		and		8
+		ret		nz
+@dom:	
+
+;	bc= coords
+
+		PUSH	HL
+		CALL	SETPOS
+		POP	HL
+
+
+@LOOP
+		LD	A,(HL)
+		inc	hl
+		and	a
+		ret	z
+
+
+		PUSH	HL
+		CALL	PRCHR
+		POP		HL
+
+		JP	@LOOP
+
+;*********************************
+;	
+;*********************************
+
+Print_A_Character:	
+;	bc= coords
+		ld	a,d
+		ld	(ThisPal),a
+		PUSH	BC
+		PUSH	HL
+		CALL	SETPOS
+		POP	HL
+			
+		LD	A,(HL)
+		PUSH	HL
+		CALL	PRCHR
+		POP HL
+		POP	BC
+		RET
+
+;*********************************
+;	
+;*********************************
+
+Menu_logos:
+
+		ld		hl,SPR_fontsel
+		call	SetFontMap
+
+		ld		hl,PAL_Activisionpal
+		call	Show_BakGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		call	UpdatBackGnd
+
+		call	WaitSecond
+	
+		ld		hl,PAL_Syroxpal
+		call	Show_BakGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		call	UpdatBackGnd
+
+		call	WaitSecond
+
+		ld		hl,PAL_astlogopal
+		call	Show_BakGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		call	UpdatBackGnd
+
+		call	WaitSecond
+		ret
+
+;*********************************
+;	
+;*********************************
+		
+Menu_movies:
+		ld		hl,PAL_Astlogopal
+		call	Show_BakGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		call	UpdatBackGnd
+		call	WaitSecond
+				
+		ret
+
+;*********************************
+;	
+;*********************************
+
+WaitSecond:
+		ld		b,60
+@loop:	push	bc
+		call	Wait_Fly
+		call	GetKeys
+		pop		bc
+
+		if ROMBUILD = 0
+
+		ld		a,(Keys)
+		Bit		BIT_KEY_START,a
+		ret		nz
+
+		endif
+
+		dec		b		
+		jr		nz,@loop
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Display_Shipselect_Screen:
+		ld		a,1						;set up menu data
+		ld		(menu_option),a
+;fade down here
+		ld		hl,SPR_fontsel
+		call	SetFontMap
+
+		ld		hl,PAL_shipselpal
+		call	Show_BakGnd
+
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		jp		UpdatBackGnd
+
+;*********************************
+;	
+;*********************************
+
+Display_Consol_Screen:
+		ld		a,1						;set up menu data
+		ld		(menu_option),a
+;fade down here
+		ld		hl,SPR_shellfont
+		call	SetFontMap
+
+		ld		hl,PAL_shellpal
+		call	Show_BakGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		jp		UpdatBackGnd
+
+Display_Zone_Picture
+		ld		a,(ThisZone)
+		dec		a
+		add		a,a
+		ld		e,a
+		ld		d,0
+		ld		hl,ZonePics
+		add		hl,de
+		ld		e,(hl)
+		inc		hl
+		ld		d,(hl)
+		ld		l,e
+		ld		h,d
+		call	Show_BakGnd
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		call	UpdatBackGnd
+
+@loop	ld	b,2
+		call	waitsecond
+		ret
+
+ZonePics:
+		dw	PAL_load1pal
+		dw	PAL_load2pal
+		dw	PAL_load3pal
+		dw	PAL_load4pal
+		dw	PAL_load5pal
+		
+
+;*********************************
+;	short memory reduction functions
+;*********************************
+
+Menu_Update_Exit:
+		call	Menu_Update
+		jp		Menu_Exit
+
+
+Menu_Update_Exit_link:
+		push	af
+		call	Menu_Update
+		pop		af
+		call	pipekeysmenu
+		jp		Menu_Exit
+
+Menu_Update:
+		call	Wait_Fly
+		call	UpdatBackGnd		
+		call	Getkeys
+		call	TestReset
+		call	HandleLink
+		call	debug_text			
+		ld		hl,time
+		inc		(hl)
+		ret
+
+
+;*********************************
+;	
+;*********************************
+
+	MEMW	domseq
+	MEMW	selecttemp
+	MEMW	pipetest	
+
+Menu_selectship2:
+		ld	hl,menu_data_shipselect2	;player two
+		ld	a,(game_type)
+		cp	4
+		jr	c,@st
+		ld	hl,menu_data_shipselect4
+@st		
+		stm		selecttemp,hl		
+		ld		a,1
+		ld		(pipetest),a
+		jp		select_entry
+		
+		
+		
+Menu_selectship:
+		xor		a
+		ld		(pipetest),a
+		ld	hl,menu_data_shipselect1
+		ld	a,(game_type)
+		cp	4
+		jr	c,@store	
+			
+		ld	hl,menu_data_shipselect3		;link games
+
+@store		stm	selecttemp,hl
+
+
+select_entry:		
+		ld		hl,seq_feship1				
+		call	InitSeq
+		stm		domseq,hl
+
+		ld		hl,0
+		stm		menu_timer,hl
+
+		call	Display_Shipselect_Screen
+		ld		a,1							;hi light color is wrong withis pic
+		ld		(menu_option),a
+@Loop1:
+
+		ldm		hl,selecttemp	
+		call	Menu_text
+
+		ld		de,#201			;select between 1,2
+		ld		a,(game_type)
+		cp		4
+		jr		c,@ui
+		
+		dec		d				;don't allow diffselect	
+		ld		a,(pipetest)
+		call	pipekeysmenu	;allow slave/master control
+
+@ui		call	Menu_control
+		
+	
+		ld		a,(menu_option)		;change ship
+		cp		1
+		jr		nz,@same
+	
+	;call display which sprite and look at keys here
+			
+		ld		a,(ship_unlock)
+		add		a,3
+		ld		d,a
+
+		ld		a,(ship_type)
+		push	af
+		call	Menu_choice		;sideways
+		ld		(ship_type),a
+		ld		e,a
+		pop		af
+		cp		e
+		jr		z,@same
+		
+		ld		a,(ship_type)
+		
+		ld		de,seq_feship1		
+
+		and		a
+		jr		z,@d1				
+
+		ld		de,seq_feship2			;Seq num
+		dec		a
+		jr		z,@d1	
+
+		ld		de,seq_feship3
+		
+@d1:
+
+;		ld		e,a
+;		ld		d,0
+;		ld		hl,seq_feship1
+;		add		hl,de
+;		ld		d,h
+;		ld		e,l
+
+
+		ldm		hl,domseq
+		call	ChangeSeq
+@same
+		ld		a,(menu_option)
+		cp		2
+		jr		nz,@gg
+		ld		a,(game_diff)
+		ld		d,3
+		call	menu_choice
+		ld		(game_diff),a
+		
+@gg	
+		ld		a,(ship_type)		
+		ld		hl,switch_text_data_ship
+		ld		b,15
+		ld		c,6		;11		
+		ld		e,1
+		call	Print_switch_text_color
+	
+		ld		a,(game_type)
+		cp		4
+		jr		nc,@rt
+		
+		ld		a,(game_diff)					
+		ld		b,17
+		ld		c,12
+		ld		hl,switch_text_data_diff
+		ld		e,2
+		call	Print_switch_text_color
+
+@rt:
+		call	InitSpr
+		call	InitCollisions
+		
+		xor		a
+		ld		(ThisTask),a
+
+		ld		b,144/2			;Coords in de
+		ld		c,160/2
+		ldm		hl,domseq
+		call	RunSeq
+
+		LD		A,1
+		LD		(DMA_GO),A
+		
+		ld		a,(pipetest)
+		call	Menu_Update_Exit_link
+		
+		jp		z,@Loop1
+	
+@L2:		
+		push	af				;save exit state
+
+		call	ClearSeqs
+		call	InitSpr
+		LD		A,1
+		LD		(DMA_GO),A
+		call	Wait_Fly
+
+		pop		af
+		ret
+
+
+
+;*********************************
+;	
+;*********************************
+
+BuildKeyTable:
+		ld		a,(config)
+		and		a
+		jr		z,InitKeyTable	
+
+		ld		hl,Remap
+
+@loop:
+		push	hl
+		ld		a,l
+		call	Key_source_remap
+		pop		hl
+
+		ld		(hl),a
+		inc		l
+		jr		nz,@loop
+		ret
+
+
+;*********************************
+;	
+;*********************************
+
+InitKeyTable:
+		ld		hl,Remap
+
+@loop:	ld		(hl),l
+		inc		l
+		jr		nz,@loop
+		ret
+
+;*********************************
+;	
+;*********************************
+
+Key_source_remap:	;a=byte
+	
+		ld		c,a
+		xor		a					;new keys		
+
+		bit		5,c					;left 		
+		jr		z,@a1		
+
+		ld		hl,config_ram2
+		or		(hl)
+
+@a1:	bit		4,c					;right
+		jr		z,@a2
+
+		ld		hl,config_ram2+1
+		or		(hl)
+
+@a2:	bit		6,c					;up
+		jr		z,@a3		
+
+		ld		hl,config_ram2+2
+		or		(hl)
+
+@a3:	bit		7,c					;down
+		jr		z,@a4		
+
+		ld		hl,config_ram2+3	
+		or		(hl)
+
+@a4:	bit		0,c					;A
+		jr		z,@a5
+
+		ld		hl,config_ram2+4	
+		or		(hl)
+
+@a5:	bit		1,c					;B
+		jr		z,@a6
+
+		ld		hl,config_ram2+5	
+		or		(hl)
+
+@a6:		
+		;now force in select and start		
+
+		ld		b,a				;new keys
+
+		ld		a,c
+		and		KEY_SELECT+KEY_START
+		or		b
+		ret
+		
+
+
+
+
+****************************************
+
+
+;rom data
+
+hiscore		dw	10000
+			dw	09000
+			dw	08000
+			dw	07000
+			dw	06000
+			dw	05000
+			dw	04000
+			dw	03000
+			dw	02000
+			dw	01000
+			
+
+;key config defaults
+default1:	db	0,1,2,3,4,5		;USA
+			
+			db	0,1,5,3,4,2		;EURO
+			db	0,1,2,3,5,4		;JAP
+			db	4,5,2,3,1,0		;alien 4,5,2,3,0,1
+			db	0,1,2,3,4,5		;custom
+
+
+password1:	db	"ZXXXXXXX"
+password2:	db	"ZZXXXXXX"
+password3:	db	"ZZZZXXXX"
+password4:	db	"ZZZZZXXX"
+password5:	db	"ZZZZZZXX"
+
+menu_data_password
+	db	3,3,"ENTER PASSWORD",0
+	db	255
+
+switch_text_data_password:
+	db	8
+	db	"",0
+	db	"  PASSWORD ZONE 2",0
+	db	"  PASSWORD ZONE 3",0
+	db	"  PASSWORD ZONE 4",0
+	db	"  PASSWORD ZONE 5",0
+	db	" PASSWORD CLASSIC",0	
+	db	" PASSWORD CLASSIC",0		;padding	
+	db	"PASSWORD INCORRECT",0
+	
+menu_data_main1:
+	db	5,3,"MAIN MENU",0
+	db	3,6,"SINGLE PLAYER",0
+	db	4,8,"MULTIPLAYER",0
+	db	6,10,"OPTIONS",0
+	db	255
+	
+menu_data_main2:
+	db	5,3,"MAIN MENU",0
+	db	3,6,"SINGLE PLAYER",0
+	db	4,8,"MULTIPLAYER",0
+	db	6,10,"OPTIONS",0
+	db	1,12,"CLASSIC ASTEROIDS",0
+	db	255
+
+menu_data_single:
+	db	3,3,"SINGLE PLAYER",0
+	db	6,6,"NEW GAME",0
+	db	6,8,"PASSWORD",0
+	db	255
+
+menu_data_multi:
+	db	4,3,"MULTIPLAYER",0
+	db	5,6,"TURNBASED",0
+	db	4,8,"HEAD TO HEAD",0
+	db	3,10,"SCAVENGER HUNT",0
+	db	8,12,"TAG",0
+	db	255
+
+
+menu_data_multi2:
+	db	4,3,"MULTIPLAYER",0
+	db	4,6,"ROUNDS",0
+	db	4,8,"TIME",0
+	db	255
+
+
+menu_data_options:
+	db	6,3,"OPTIONS",0
+	db	3,6,"CONTROL CONFIG",0
+	db	2,8,"MUSIC VOLUME",0
+	db	3,10,"SFX VOLUME",0
+	db	6,12,"CREDITS",0
+	db	8,17,"EXIT",0
+	db	255
+
+menu_data_config:
+	db	3,1,"CONTROL CONFIG",0
+	db	3,3,"DEFAULT",0
+	db	3,5,"LEFT",0
+	db	3,7,"RIGHT",0
+	db	3,9,"UP",0
+	db	3,11,"DOWN",0
+	db	3,13,"A",0
+	db	3,15,"B",0
+	db	8,17,"EXIT",0
+	db	255
+
+;gametype 0,1 and 3 (single)	
+menu_data_shipselect1:
+	db	5,1,"PLAYER ONE",0
+	db	8,13,"SHIP",0
+	db	1,17,"DIFFICULTY",0
+	db	255
+;gametype 3 (2nd player)
+menu_data_shipselect2:
+	db	5,1,"PLAYER TWO",0
+	db	8,13,"SHIP",0
+	db	1,17,"DIFFICULTY",0
+	db	255
+
+;gametype 4+ link
+menu_data_shipselect3:
+	db	5,1,"PLAYER ONE",0
+	db	8,13,"SHIP",0
+	db	255
+	
+menu_data_shipselect4:
+	db	5,1,"PLAYER TWO",0
+	db	8,13,"SHIP",0
+	db	255
+
+switch_text_data_link
+	db	2
+	db	" NO LINK",0
+	db	"CONNECTED",0
+	
+switch_text_data_ship
+	db	4
+	db	" DAGGER",0
+	db	" RAPIER",0
+	db	"LONGSWORD",0
+	db	"EXCALIBER",0
+		
+switch_text_data_diff:
+	db	3		;how many
+	db	"ROOKIE",0
+	db	"VETERAN",0
+	db	"ACE",0
+	
+switch_text_data_control:
+	db	6
+	db	"LEFT",0
+	db	"RIGHT",0
+	db	"THRUST",0
+	db	"DEFENSE",0
+	db	"FIRE",0
+	db	"SPECIAL",0
+
+switch_text_data_default:
+	db	5
+	db	"1",0
+	db	"2",0
+	db	"3",0
+	db	"4",0
+	db	"CUSTOM",0
+
+convertrounds:				;needs to be 1 plus
+	db	3,5,7,11,13
+
+switch_text_data_rounds:
+	db	5
+	db	"2",0
+	db	"4",0
+	db	"6",0
+	db	"10",0
+	db	"12",0
+
+convertime:
+	db	5,10,30,60
+	
+switch_text_data_time:
+	db	4
+	db	"5",0
+	db	"10",0
+	db	"30",0
+	db	"60",0	
+
+
+remap_key_data:
+	db	32,16,64,128,1,2		;standard bit numbers for above
+
+
+switch_text_data_loud:
+	db	3
+	db	"OFF",0
+	db	"MIN",0
+	db	"MAX",0
+	
+
+text_test:	db "HELLO",0
+
+;		"01234567890123456789"
+text_credits1:
+	db	"DEVELOPED BY",0
+	db	"SYROX DEVELOPMENTS",0
+	db	"LTD",0,0
+	db	"LEAD PROGRAMMER",0
+	db	"TONY HARTLY",0,0
+	db	"PROGRAMMER",0
+	db	"DOMINIC WOOD",0,0
+	db	"LEAD ARTIST",0
+	db	"JAMES CLARKE",0,0
+	db	255
+text_credits2:	
+	db	"ARTISTS",0
+	db	"COLIN ROBERTSON",0
+	db	"MARK KNOWLES",0
+	db	"PHIL WILLIAMS",0,0
+	db	"PRODUCER",0
+	db	"DOMINIC WOOD",0,0
+	db	"ASST PRODUCER",0
+	db	"DELL POON",0,0
+	db	255 
+	
+	
+	
+	
+;*********************************
+;	
+;*********************************
+
+Menu_Credits:
+
+		call	Display_Consol_Screen
+		ld		hl,4*60
+		stm		menu_timer,hl
+
+@loop1	
+		ld		b,3
+		ld		hl,text_credits1
+		call	Print_Text_Block
+		call	Menu_Update_Exit
+		jr		z,@Loop1
+		cp		253
+		ret		z
+
+		ld		hl,4*60
+		stm		menu_timer,hl
+
+@loop2	
+		ld		b,3
+		ld		hl,text_credits2
+		call	Print_Text_Block
+		call	Menu_Update_Exit
+		jr		z,@Loop2
+				
+		ret
+
+
+;*********************************
+;	
+;*********************************
+		MEMW	fuck
+Menu_Mission:
+
+		call	Display_Mission_Screen
+
+		ld		hl,4*60
+		stm		menu_timer,hl
+
+		ld		a,(ThisZone)
+		dec		a
+		cp		4
+		jr		c,@a1
+		ld		a,4
+@a1:			
+		add		a,a
+		add		a,a
+		ld		e,a
+		ld		d,0
+		ld		hl,Mission_data
+		add		hl,de
+		ld		e,(hl)
+		inc		hl
+		ld		d,(hl)
+		inc		hl
+		push	de				;2nd screen of text
+		ld		e,(hl)
+		inc		hl
+		ld		d,(hl)
+		
+		ld		h,d
+		ld		l,e
+		
+		stm		hl,(fuck)
+@loop1:	ldm		hl,(fuck)	
+		call	menu_text
+		call	Menu_Update_Exit
+		jp		z,@Loop1
+		
+		pop		hl
+		cp		253
+		ret		z
+				
+		ld		a,4*60
+		ld		(menu_timer),a
+
+		stm		hl,(fuck)
+@loop2:	ldm		hl,(fuck)		
+		call	menu_text
+		call	Menu_Update_Exit
+		jp		z,@Loop2
+						
+		ret
+
+
+Mission_Data:
+		dw	Text_Mission1a,Text_Mission1
+;		dw	Text_Mission2a,Text_Mission2		
+;		dw	Text_Mission3a,Text_Mission3		
+;		dw	Text_Mission4a,Text_Mission4
+;		dw	Text_Mission5a,Text_Mission5		
+************************************
+;	Mission Briefings
+
+
+Text_Mission1:
+	db	"Zone 1",0
+	db	"has released you in",0
+	db	"the Asteroid belt",0
+	db	"known as `Sigma",0
+	db	"Delta.'  Your",0
+	db	"mission is to clear",0
+	db	"the belt of all",0
+	db	"asteroids, making",0
+	db	"interstellar travel",0
+	db	"in this part of the",0
+	db	"galaxy safe.",0
+	db	"",0
+	db	"(A) Continue",0
+	db	255
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+
+Text_Mission1a:
+	db	"Take extra",0
+	db	"precaution of the",0
+	db	"Crystal Asteroids",0
+	db	"as they will re-grow",0
+	db	"after they have",0
+	db	"splintered apart.",0
+	db	"",0
+	db	"Keep your eyes open",0
+	db	"we will try to",0
+	db	"drop you some new",0
+	db	"experimental",0
+	db	"technology.  Happy",0
+	db	"hunting.",0
+	db	"",0
+	db	"(A) Continue",0
+	db	255
+
+	if	0
+
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+Text_Mission2:
+	db	"Zone 2",0
+	db	"Systems are on-line.",0
+	db	"Cargo ships will be",0
+	db	"travelling through",0
+	db	"this area, and",0
+	db	"maintaining speed is",0 
+	db	"crucial to keep them",0
+	db	"from being sucked",0
+	db	"into the Black",0
+	db	"Hole's core.  Your",0
+	db	"job is to rid the",0
+	db	"area of all debris,",0
+	db	"because at that",0
+	db	"speed, even a small",0
+	db	"rock can prove",0
+	db	"disastrous.",0
+	db	"(A) Continue",0
+	db	255
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+
+Text_Mission2a:
+	db	"Watch out for a type",0
+	db	"Asteroid in these",0
+	db	"impervious to",0
+	db	"have to repel them",0
+	db	"with your lasers.",0
+	db	"Stay away from the",0
+	db	"Black Hole's core.",0
+	db	"If you linger too",0
+	db	"long, you will be",0
+	db	"crushed by it's",0
+	db	"massive gravity.",0
+	db	"Headquarters out.",0
+	db	"(A) Continue",0
+	db	255
+	
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+Text_Mission3:
+	db	"Zone 3",0
+	db	"Steer clear of the",0
+	db	"burning hydrogen.",0
+	db	"This area is like a",0
+	db	"nursery for new",0
+	db	"stars, and they have",0
+	db	"a habit of forming",0
+	db	"with little warning.",0
+	db	"Your mission is to",0
+	db	"destroy all of the",0
+	db	"Asteroids and comets",0
+	db	"in the area.  The",0
+	db	"Poseidon Corporation",0
+	db	"wants to make a",0
+	db	"vacation spot here-",0
+	db	"don't ask why.",0
+	db	"(A) Continue",0
+	db	255
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+
+Text_Mission3a:
+	db	"All we have to do is",0
+	db	"clear the area and",0
+	db	"receive our payment.",0
+	db	"Be careful of the",0
+	db	"Ancient Energy",0
+	db	"Asteroids, as they",0
+	db	"collect your",0
+	db	"weapon's energy and",0
+	db	"fire it back at you.",0
+	db	"(A) Continue",0
+	db	255
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
+Text_Mission4:
+	db	"Zone 4",0
+	db	"Stand-by for a",0
+	db	"priority one",0
+	db	"encrypted message...",0
+	db	"The military has",0
+	db	"contracted us to",0
+	db	"clear the sector to",0
+	db	"make way for a large",0
+	db	"outpost there.  This",0
+	db	"location is on the",0
+	db	"very edge of charted",0
+	db	"space.  According",0
+	db	"scans the military",0
+	db	"supplied us, there",0
+	db	"should only be a",0
+	db	"small number of",0
+	db	"(A) Continue",0
+	db	255
+	
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
+Text_Mission4a:
+	db	"passive life forms",0
+	db	"inhabiting the area.",0
+	db	"However, our own",0
+	db	"probes have turned",0
+	db	"up signs of large,",0
+	db	"hostile life forms.",0
+	db	"The military may be",0
+	db	"covering up the true",0
+	db	"nature of this area.",0
+	db	"Use extreme",0
+	db	"caution, and get out",0
+	db	"in one piece.",0
+	db	"Headquarters, out.",0
+	db	"(A) Continue",0
+	db	255
+	
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
+Text_Mission5:
+	db	"Zone 5",0
+	db	"HQ, this is pilot",0
+	db	"number XJ-79: This",0
+	db	"is an emergency",0
+	db	"transmission...",0
+	db	"This area is just",0
+	db	"the tip of a massive",0
+	db	"alien galaxy- and",0
+	db	"it's inhabitants are",0
+	db	"pretty angry about",0
+	db	"me shooting up their",0
+	db	"homes. The military",0
+	db	"has set us up as the",0
+	db	"fall guys for some",0
+	db	"sort of covert",0
+	db	"operation.",0
+	db	"(A) Continue",0
+	db	255
+	
+;/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+Text_Mission5a:
+	db	"What's worse, the",0
+	db	"aliens launched a",0
+	db	"counter-attack by",0
+	db	"sending tons of",0
+	db	"massive asteroids",0
+	db	"hurtling straight at",0
+	db	"Earth!  ...I'm being",0 
+	db	"jammed, so I have no",0
+	db	"way to tell if you",0
+	db	"heard any of this",0
+	db	"message- I guess",0
+	db	"it's up to me to",0
+	db	"save the world.",0
+	db	"Pilot XJ-79,",0
+	db	"signing-off.",0
+	db	"(A) Continue",0
+	db	255
+	
+	endif
+	
+	
+Set_Clx_Spd:
+		push	de
+		push	hl
+		ld		a,(ThisLevel)
+		dec		a
+		and		15				;keep in range
+		add		a,a
+		add		a,a
+		ld		e,a
+		ldx		a,Size
+		add		a,e
+		ld		e,a
+		ld		d,0
+		ld		hl,Classic_Spds
+		add		hl,de
+		ld		a,(hl)
+		pop		hl
+		pop		de
+		ret
+		
+Classic_Spds:		
+		db	#10,#20,#20,0
+		db	#10,#20,#20,0
+		db	#20,#25,#30,0
+		db	#20,#25,#30,0
+		
+		db	#20,#25,#30,0
+		db	#20,#25,#30,0
+		db	#20,#25,#30,0
+		db	#20,#25,#30,0
+
+		db	#25,#30,#40,0
+		db	#25,#30,#40,0
+		db	#25,#30,#40,0
+		db	#25,#30,#40,0
+
+		db	#30,#35,#40,0
+		db	#30,#35,#40,0
+		db	#30,#35,#40,0
+		db	#30,#35,#40,0
+
+

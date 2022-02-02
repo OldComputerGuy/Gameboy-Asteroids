@@ -1,0 +1,1367 @@
+********************************************************************************
+*             PDS DOWNLOAD SOFTWARE FOR NINTENDO GAMEBOY
+********************************************************************************
+
+DJNZ	MACRO
+		DEC	B
+		JP	NZ,\@1
+		ENDM
+
+****************************************
+*          RAM ALLOCATION
+****************************************
+
+MBASE		=	#DF00
+
+INBYTE		=	MBASE+0
+SIOFLAG		=	MBASE+1
+SCRADD		=	MBASE+2 		;WORD
+TESTFAIL	=	MBASE+4
+VDPFLAG		=	MBASE+5
+MASTER		=	MBASE+6
+CGB			=	MBASE+7
+
+STACK		=	#DFFE			;TOP OF WORKRAM
+LBANK		=	#DFFF			;LAST BANK
+
+****************************************
+*          CONTROL REGISTER
+****************************************
+
+STOP		=	0
+AT		=	1
+
+;BANKSEL	=	#3FFF			;only on mbc2/3
+
+BANKSEL		=	#2000				;mbc5
+BANKSELH	=	#3000				;mbc5
+
+P1		=	#FF00		;KEY PORT
+
+SB		=	#FF01		;SERIAL DATA
+SC		=	#FF02		;SERIAL CONTROL
+
+DIV		=	#FF04		;DIVIDER
+TIMA		=	#FF05		;TIMER
+TMA		=	#FF06		;TIMER
+TAC		=	#FF07		;TIMER CONTROL
+
+IF		=	#FF0F		;INTERRUPT FLAG
+IE		=	#FFFF		;INTERRUPT ENABLE FLAG
+
+LCDC		=	#FF40		;LCD CONTROLL
+STAT		=	#FF41		;LCDC STATUS
+
+SCY		=	#FF42		;SCROLL X
+SCX		=	#FF43		;SCROLL Y
+
+LY		=	#FF44		;LCDC Y
+LYC		=	#FF45		;LCDC Y COMPARE
+
+DMA		=	#FF46		;DMA CONTROL
+
+BGP		=	#FF47		;BAK PALET
+OBP0		=	#FF48		;OBJ 0 PALET
+OBP1		=	#FF49		;OBJ 1 PALET
+
+WY		=	#FF4A		;WINDOW X
+WX		=	#FF4B		;WINDOW Y
+
+KEY1	=	#ff4d
+
+BCPS	=	#ff68		;BackGroup Palette
+BCPD	=	#ff69
+
+OCPS	=	#ff6a		;Object Palette
+OCPD	=	#ff6b
+
+VBK		=	#FF4F
+SVBK	=	#FF70
+RP		=	#FF56
+
+****************************************
+*            RST 0 VECTOR
+****************************************
+
+		ORG	#00
+		RET
+
+****************************************
+*         V BLANK INTERRUPT
+****************************************
+
+		ORG	#40
+		RETI
+
+****************************************
+*       LCDC STATUS INTERRUPT
+****************************************
+
+		ORG	#48
+		RETI
+
+****************************************
+*          TIMER INTERRUPT
+****************************************
+
+		ORG	#50
+		RETI
+
+****************************************
+*          SIO INTERRUPT
+****************************************
+
+		ORG	#58
+		JP	SIO_INT
+
+****************************************
+*        KEY INPUT INTERRUPT
+****************************************
+
+		ORG	#0
+		RETI
+
+;***************************************************************
+;*		 CARTRIDGE REGISTRATION DATA
+;***************************************************************
+
+		ORG	#100
+
+****************************************
+*        NINTENDO LOGO DATA
+****************************************
+
+		HEX	00C35001
+		HEX	CEED6666
+		HEX	CC0D000B
+		HEX	03730083
+		HEX	000C000D
+		HEX	0008111F
+		HEX	8889000E
+		HEX	DCCC6EE6
+		HEX	DDDDD999
+		HEX	BBBB6763
+		HEX	6E0EECCC
+		HEX	DDDC999F
+		HEX	BBB9333E
+
+****************************************
+*         GAME HEADER INFO
+****************************************
+
+TITLESTR
+
+			DB	"A R HARTLEY DL1"	;GAME TITLE (16 CHRS) DMG
+			DB	#80					;CGB COMPATIBLE
+
+			DB	0,0					;MAKER CODE
+			DB	#00					;SUPER GAMEBOY FUNCTIONS
+			DB	#19					;CARTRIDGE TYPE
+			DB	#05					;ROM SIZE #05
+			DB	#01					;RAM SIZE
+			DB	#01					;MANUFACTURER CODE (Destination)
+			DB	#33					;FIXED VALUE
+			DB	#00					;VERSION NUMBER
+COMCHK		DB	#49					;COMPLEMENT CHECK #55 (#E7 DEV CODE)
+CHKSUM		DW	#e28c					;CHECKSUM
+
+****************************************
+*        CARTRIDGE EXEC HERE
+****************************************
+
+		ORG	#150
+
+		JP	INITROM		;INITROM
+		JP	INIT
+		JP	NOHARDSET
+
+//ROMEXEC		=	#151
+
+****************************************
+*             DO A WARM START
+****************************************
+
+WARMRUN	
+		DI
+		LD	SP,STACK
+		CALL	INITHARD
+		EI
+
+		JP	WARMSTART
+
+****************************************
+*	  START OF PROGRAM
+****************************************
+
+INIT
+		DI
+		LD	SP,STACK
+
+		CALL	INITHARD
+
+NOHARDSET	DI
+		LD	SP,STACK
+
+		EI
+		
+WARMSTART	XOR	A
+		LD	(SIOFLAG),A
+		LD	(VDPFLAG),A
+
+		LD	A,#01
+		LD	(BANKSEL),A
+		LD	(LBANK),A
+
+		XOR	A
+		LD	(BANKSELH),A
+		
+****************************************
+*	 MAIN LOOP
+****************************************
+
+MAIN 		CALL	GET_ONE
+
+		CP	180
+		JR	Z,DLOAD
+
+ 		CP	182
+		JP	Z,UPLOAD
+
+		CP	181
+		JR	Z,EXECCODE
+
+		CP	151
+		JP	Z,VERSION
+
+		CP	150
+		JP	Z,ECHOX
+
+		CP	183
+		JP	Z,BANKX
+
+		CP	188
+		JP	Z,SETVDP
+
+		JP	MAIN
+
+****************************************
+*             FUNCTION 188
+*---------------------------------------
+*	ECHO BYTE AND HANDSHAKE
+****************************************
+
+SETVDP		CALL	GET_ONE
+		LD	(VDPFLAG),A
+		JP	MAIN
+
+****************************************
+*             FUNCTION 150
+*---------------------------------------
+*	ECHO BYTE AND HANDSHAKE
+****************************************
+
+ECHOX		CALL	GET_ONE
+		CALL	SEND_ONE
+		JP	MAIN
+
+****************************************
+*            FUNCTION 151
+*---------------------------------------
+*	  SEND VERSION BYTE
+****************************************
+
+VERSNUM		=	#12
+
+VERSION		LD	A,VERSNUM
+		CALL	SEND_ONE
+		JP	MAIN
+
+****************************************
+*            FUNCTION 183
+*---------------------------------------
+*	       BANK XX
+****************************************
+
+BANKX	CALL	GET_ONE
+
+		LD	(BANKSEL),A
+		LD	(LBANK),A
+
+		XOR	A
+		LD	(BANKSELH),A
+
+		JP	MAIN
+
+****************************************
+*           FUNCTION 181
+*---------------------------------------
+*      EXECUTE CODE FROM AABB
+****************************************
+
+EXECCODE	LD	HL,MAIN
+		PUSH	HL
+
+		CALL	GET_ONE
+		LD	H,A
+		CALL	GET_ONE
+		LD	L,A
+		JP	(HL)
+			
+****************************************
+*           FUNCTION 180
+*---------------------------------------
+* DOWNLOAD CODE INTO AABB, LENGTH=CCDD
+****************************************
+
+DLOAD		CALL	XORVDP
+
+		CALL	GET_ONE
+		LD	H,A
+
+		CALL	GET_ONE
+		LD	L,A
+
+		CALL	GET_ONE
+		LD	B,A
+
+		CALL	GET_ONE
+		LD	C,A
+
+@LOOP		CALL	GET_ONE
+		LD	E,A		;SAVE BYTE IN E
+
+		CALL	WRITE_BYTE	;A => (HL)
+		INC	HL
+
+		DEC	BC
+		LD	A,B
+		OR	C
+		JP	NZ,@LOOP
+
+		CALL	XORVDP
+
+		JP	MAIN   
+
+****************************************
+*            WRITE A => (HL)
+*     WITHOUT EFFECTING THE PAGING
+****************************************
+
+WRITE_BYTE	LD	A,H
+		AND	#E0
+		CP	#20
+		JP	Z,@SETBNK
+
+		LD	(HL),E
+		RET
+
+@SETBNK		LD	A,#00	      		;SELECT #4000 BANK 0
+		LD	(BANKSEL),A		;#3FFF = 0
+
+		SET	6,H
+		LD	(HL),E		
+		RES	6,H	      		;REPAIR HL
+
+		LD	A,(LBANK)
+		LD	(BANKSEL),A
+		RET
+
+****************************************
+*             FUNCTION 182
+*---------------------------------------
+*   UPLOAD CODE, FROM HL, LENGTH BC
+****************************************
+
+UPLOAD
+		CALL	XORVDP
+
+		CALL	GET_ONE
+		LD	H,A
+
+		CALL	GET_ONE
+		LD	L,A
+
+		CALL	GET_ONE
+		LD	B,A
+
+		CALL	GET_ONE
+		LD	C,A
+
+@LOOP:
+		LD	A,(HLI)
+		CALL	SEND_ONE
+
+		DEC	BC
+		LD	A,B
+		OR	C
+		JP	NZ,@LOOP
+
+		CALL	XORVDP
+
+		JP	MAIN
+
+****************************************
+*       GET BYTE FROM PC IN E
+****************************************
+
+GET_ONE		LD	A,#80 		;START TO LISTEN
+		LD	(SC),A
+
+@WAIT		LD	A,(SIOFLAG)	;WAIT FOR SIO TO RECEIVE BYTE
+		AND	A
+		JP	Z,@WAIT
+
+		XOR	A		;CLEAR SIO FLAG		
+		LD	(SIOFLAG),A
+
+		LD	A,(INBYTE) 	;GET RECEIVED BYTE IN A
+		RET
+
+****************************************
+*       SEND A BYTE TO THE PC
+*	     A = BYTE
+****************************************  
+
+SEND_ONE	LD	(SB),A		;PUT BYTE TO SEND TO PC IN SB
+
+		LD	A,#80		;SEND IT TO PC
+		LD	(SC),A
+
+@WAIT		LD	A,(SIOFLAG)
+		AND	A
+		JP	Z,@WAIT
+
+		XOR	A
+		LD	(SIOFLAG),A
+		RET
+
+****************************************
+*           SIO INTERRUPT
+****************************************
+
+SIO_INT		PUSH	AF
+
+		LD	A,(SB)	   	;BYTE THAT HAS BEEN RECIEVED
+		LD	(INBYTE),A
+
+		LD	A,1	      	;SAY THAT WE HAVE GOT THE BYTE
+		LD	(SIOFLAG),A
+		
+		POP	AF
+		RETI
+
+****************************************
+*           INVERT LCD ON/OFF       
+****************************************
+
+XORVDP		LD	A,(VDPFLAG)
+		AND	A
+		RET	Z
+
+		LDZ	A,(LCDC)
+		XOR	#80
+		LDZ	(LCDC),A
+		RET
+
+****************************************
+*       PUT DMA STUFF AT #FF80
+****************************************
+
+DMA_PUT		LD	HL,DMAPRG
+		LD	C,#80
+		LD	B,10
+
+@COPY		LD	A,(HLI)
+		LD	(C),A
+		INC	C
+		DEC	B
+		JR	NZ,@COPY
+		RET	
+
+****************************************
+*         END OF PROGRAM
+****************************************
+
+DMAPRG		LD	A,#C2
+		LDZ	(#FF46),A
+		LD	A,#28
+@XX		DEC	A
+		JR	NZ,@XX
+		RET	
+
+****************************************
+*          LOCATE CHAR ON MAP
+* 		 IN BC
+****************************************
+
+CHPOS		LD	L,B
+		LD	H,0
+		ADD	HL,HL
+		ADD	HL,HL
+		ADD	HL,HL
+		ADD	HL,HL
+		ADD	HL,HL
+		LD	B,0
+		ADD	HL,BC
+		LD	BC,#9800
+		ADD	HL,BC
+		RET
+
+****************************************
+*            SET MAP POSITION
+****************************************
+		
+SETPOS		CALL	CHPOS
+		LD	A,L
+		LD	(SCRADD),A
+		LD	A,H
+		LD	(SCRADD+1),A
+		RET
+
+****************************************
+*	   PRINT A CHR ON MAP
+****************************************
+
+PRCHR		SUB	32
+
+PRCHAR		CALL	WAIT_STAT
+
+		LD	HL,SCRADD
+		LD	E,(HL)
+		INC	HL
+		LD	D,(HL)
+
+		LD  	(DE),A
+ 
+CURR		INC	DE
+		LD	(HL),D
+		DEC	HL
+		LD	(HL),E
+		RET
+
+****************************************
+* WAIT FOR CORRECT TIME TO PUT ON CHRS
+****************************************
+
+WAIT_STAT	PUSH	AF
+
+@WAIT		LD	A,(STAT)
+		AND	2
+		JP	Z,@WAIT
+
+@WAIT2		LD	A,(STAT)
+		AND	2
+		JP	NZ,@WAIT2
+
+		POP	AF   
+		RET
+
+****************************************
+*       WAIT FOR FRAME FLYBACK
+****************************************
+
+WAIT_FLY	PUSH	AF
+
+@WAIT		LDZ	A,(LY)
+		CP	145
+		JP	NZ,@WAIT
+
+		POP	AF
+		RET
+
+****************************************
+*	     PRINT A STRING
+****************************************
+
+PRINT		POP	HL
+
+@LOOP		LD	A,(HL)
+		CP	STOP
+		JP	Z,@END
+
+		CP	AT
+		JP	Z,@AT
+		
+		PUSH	HL
+		SUB	32
+		CALL	PRCHAR
+		POP	HL
+
+		INC	HL
+		JP	@LOOP
+
+@AT		INC	HL
+		LD	B,(HL)
+		INC	HL
+		LD	C,(HL)
+		INC	HL
+
+		PUSH	HL
+		CALL	SETPOS
+		POP	HL
+
+		JP	@LOOP
+		
+@END		INC	HL
+		JP	(HL)
+
+****************************************
+*    PRINT RAMTEST FAILED IF IT DID
+****************************************
+
+MESSAGES:
+;     	LD	A,<WARMRUN
+;		LD	(ROMEXEC),A
+
+;		LD	A,>WARMRUN
+;		LD	(ROMEXEC+1),A
+		
+		CALL	PRINT
+		DB	AT,6,1,"BOOT OK.",STOP
+
+		LD	A,(TESTFAIL)
+		AND	A
+	     	JP	Z,INIT
+
+		CALL	PRINT
+		DB	AT,8,1,"RAMTEST FAILED !",STOP
+
+		JP	INIT
+
+****************************************
+*          INITIALISE HARDWARE
+****************************************
+
+INITHARD      	XOR	A
+		LDZ	(IF),A
+
+		LD	A,%00001001
+		LDZ	(IE),A
+
+		LD	HL,#C000		;CLEAR RAM
+		LD	BC,MBASE-#C000		;DON'T CLEAR STACK
+
+@LOOP		XOR	A
+		LD	(HLI),A
+		DEC	BC
+		LD	A,B
+		OR	C
+		JR	NZ,@LOOP
+
+		LD	HL,#FFFE
+		LD	B,#7E
+		XOR	A
+
+@LOOP2		LD	(HLD),A
+		DJNZ	@LOOP2
+
+		LD	HL,#FEFF
+		DEC	B
+
+@LOOP3		LD	(HLD),A
+		DJNZ	@LOOP3
+
+		CALL	DMA_PUT
+		CALL	#FF80
+
+		LD	A,%11100100
+		LDZ	(BGP),A
+
+		LD	A,%11100100
+		LDZ	(OBP0),A
+
+		LD	A,%11100100
+		LDZ	(OBP1),A
+
+		LD	A,#00
+		LDZ	(SCX),A
+
+		LD	A,#00
+		LDZ	(SCY),A
+
+		LD	A,%10010011
+		LDZ	(LCDC),A
+
+		RET
+
+****************************************
+*		 Init CGB Palette
+****************************************
+
+CGBPal:
+		dw	%000001111111111
+		dw	%000000111101111
+		dw	%000000011100111
+		dw	%000000000000000
+
+;		dw	%111111111111111
+;		dw	%011110111101111
+;		dw	%001110011100111
+;		dw	%000000000000000
+
+;		dw	%000000000000111
+;		dw	%001110011100111
+;		dw	%011110111101111
+;		dw	%111111111111111
+
+SetCGBPal:
+		ld		a,(CGB)
+		and		a
+		ret		z
+
+		ld		hl,CGBPal
+		
+		ld		a,%10000000
+		ld		(BCPS),a
+
+		ld		b,8
+
+@loop:	ld		a,(hli)
+		ldz		(BCPD),a
+
+		dec		b
+		jr		nz,@loop
+		ret
+
+
+****************************************
+*	     PRINT A CHAR
+*               A = CHR
+*	       BC = YX POS
+****************************************
+
+COPY	       	LD	DE,CHARS
+		LD	HL,#8000	;CHR RAM
+		LD	BC,8*96		;100 CHARS
+
+@LOOP		CALL	WAIT_STAT	;ONLY WORK IN V-BLANK
+
+		LD	A,(DE)		;GET CHR DATA
+		LD	(HLI),A		;COPY SAME DATA TWICE
+		LD	(HLI),A
+		INC	DE
+		DEC	BC		
+		LD	A,B
+		OR	C
+		JP	NZ,@LOOP
+		RET
+
+****************************************
+*	     CLEAR SCREEN
+****************************************
+
+CLS		LD	HL,#9800
+		LD	B,0
+		XOR	A
+
+@LOOP		CALL	WAIT_STAT
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		DJNZ	@LOOP
+
+
+CLSATTR
+		LD	A,(CGB)
+		AND	A
+		RET	Z
+
+		LD	A,1
+		LDZ	(VBK),A
+		
+		LD	HL,#9800
+		LD	B,0
+		XOR	A
+
+@LOOP	CALL	WAIT_STAT
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		LD	(HLI),A
+		DJNZ	@LOOP
+
+		LD	A,0
+		LDZ	(VBK),A
+
+		RET
+
+			DB	0,0,0,0
+COPYLEN		EQU	$
+
+********************************************************************************
+*     		      JOYSTICK COMMUNICATION TESTS
+********************************************************************************
+
+COMMS_TEST	DI
+		CALL	INITHARD
+
+		LD	SP,STACK
+		EI
+	
+		CALL	CLS
+
+		CALL	WAIT_KEY_CLR
+
+		CALL	PRINT
+		DB	AT,0,0,"COMMUNICATIONS TEST"
+		DB	AT,1,0,"SELECT MODE :- "
+		DB	AT,3,0,"START  = STARTS"
+		DB	AT,4,0,"SELECT = RECEIVE"
+		DB	STOP
+
+@LOOP		CALL	GETKEYS
+
+		XOR	A
+		LD	(SIOFLAG),A
+	
+		BIT	3,C
+		JP	NZ,START_TRAN
+
+		BIT	2,C
+		JP	NZ,WAIT_TRAN
+
+		XOR	A
+		CALL	PRINT_SENT
+		CALL	PRINT_BIN
+
+		JP	@LOOP
+
+****************************************
+*          START TRANSMITTING
+****************************************
+
+START_TRAN	CALL	WAIT_KEY_CLR
+
+		LD	A,%11111111		;SAY I AM THE MASTER
+		CALL	COMM_SEND
+
+		LD	A,1			;SET UP MASTER FLAG
+		LD	(MASTER),A
+
+@LOOP		CALL	COMM_REC		;WAIT FOR SLAVE TO ANSWER
+		CP	#FF
+		JP	NZ,@LOOP
+
+@MAIN		CALL	GETKEYS			;GETKEYS
+	
+		LD	A,C			;STRIP OUT SEL AND START
+		AND	%11110011
+
+		CALL	PRINT_SENT
+
+		CALL	COMM_SEND
+
+@LOOP2		CALL	COMM_REC
+		CALL	PRINT_BIN
+		
+	  	JP	@MAIN
+		
+****************************************
+*         WAIT FOR TRANSMISSION
+****************************************
+
+WAIT_TRAN	CALL	WAIT_KEY_CLR
+
+		CALL	COMM_REC  		;WAIT FOR MASTER
+		CP	#FF
+		JP	NZ,WAIT_TRAN
+
+		LD	A,%11111111		;SAY GOT IT
+		CALL	COMM_SEND
+
+		LD	A,0			;SAY IM THE SLAVE
+		LD	(MASTER),A
+
+@MAIN		CALL	COMM_REC
+		CALL	PRINT_BIN
+
+		CALL	GETKEYS			;GETKEYS
+	
+		LD	A,C			;STRIP OUT SEL AND START
+		AND	%11110011
+
+		CALL	PRINT_SENT
+
+		CALL	COMM_SEND
+	
+	  	JP	@MAIN
+
+****************************************
+*       GET BYTE FROM PC IN E
+****************************************
+
+COMM_REC	LD	A,#80 		;START TO LISTEN
+		LD	(SC),A
+
+@WAIT		LD	A,(SIOFLAG)	;WAIT FOR SIO TO RECEIVE BYTE
+		AND	A
+		JP	Z,@WAIT
+
+		XOR	A		;CLEAR SIO FLAG		
+		LD	(SIOFLAG),A
+
+		LD	A,(INBYTE) 	;GET RECEIVED BYTE IN A
+		RET
+
+****************************************
+*       SEND A BYTE TO THE PC
+*	     A = BYTE
+****************************************  
+
+COMM_SEND	LD	(SB),A		;PUT BYTE TO SEND TO PC IN SB
+
+		LD	A,#81		;SEND IT TO PC
+		LD	(SC),A
+
+@WAIT		LD	A,(SIOFLAG)
+		AND	A
+		JP	Z,@WAIT
+
+		XOR	A
+		LD	(SIOFLAG),A
+		RET
+
+****************************************
+*         WAIT FOR KEYPAD CLEAR
+****************************************
+
+WAIT_KEY_CLR	CALL	GETKEYS
+		LD	A,C
+		AND	A
+		JP	NZ,WAIT_KEY_CLR
+		RET
+
+****************************************
+*            PRINT BINARY
+****************************************
+
+PRINT_BIN	PUSH	AF
+
+		CALL	PRINT
+		DB	AT,15,0,"RECEIVED %",STOP
+
+		POP	AF
+
+		JP	PR_BIN
+
+PRINT_SENT	PUSH	AF
+
+		CALL	PRINT
+		DB	AT,16,0,"SENT     %",STOP
+
+		POP	AF
+
+		PUSH	AF
+		CALL	PR_BIN
+		POP	AF
+		RET
+
+PR_BIN		LD	C,A
+		LD	B,8
+
+@LOOP		LD	E,"0"
+
+		BIT	7,C
+		JP	Z,@ZERO
+
+		LD	E,"1"
+
+@ZERO		PUSH	BC
+
+		LD	A,E
+		SUB	32
+		CALL	PRCHAR
+
+		POP	BC
+
+		SLA	C
+		DJNZ	@LOOP
+		RET
+
+****************************************
+*	   READ GAMEBOY KEYS 
+*	   ~~~~~~~~~~~~~~~~~
+*	   0 = A    : 1 = B
+*	   2 = SEL  : 3 = START
+*	   4 = LEFT : 5 = RIGHT
+*	   6 = UP   : 7 = DOWN
+****************************************
+
+GETKEYS		LD	A,#20		;SELECT JOYSTICK DATA INPUT
+		LDZ	(P1),A
+
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		AND	#0F
+		SWAP	A
+		LD	C,A
+
+		LD	A,#10		;SELECT KEYPAD DATA
+		LDZ	(P1),A
+
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+		LDZ	A,(P1)		;READ JOYDATA
+
+		AND	#0F
+		OR	C
+		CPL
+		LD	C,A
+
+		NOP
+		NOP
+		NOP
+
+		LD	A,#30
+		LDZ	(P1),A
+		RET
+
+****************************************
+*            CHARACTER SET
+****************************************
+
+CHARS	HEX 00000000000000000010101010001000
+	HEX 002424000000000000247E24247E2400
+	HEX 00083E283E0A3E080062640810264600
+	HEX 001028102A443A000008100000000000
+	HEX 00040808080804000020101010102000
+	HEX 000014083E081400000008083E080800
+	HEX 0000000000080810000000003E000000
+	HEX 00000000001818000000020408102000
+	HEX 003C464A52623C000018280808083E00
+	HEX 003C42023C407E00003C420C02423C00
+	HEX 00081828487E0800007E407C02423C00
+	HEX 003C407C42423C00007E020408101000
+	HEX 003C423C42423C00003C42423E023C00
+	HEX 00000010000010000000100000101020
+	HEX 00000408100804000000003E003E0000
+	HEX 0000100804081000003C420408000800
+	HEX 003C4A565E403C00003C42427E424200
+	HEX 007C427C42427C00003C424040423C00
+	HEX 0078444242447800007E407C40407E00
+	HEX 007E407C40404000003C42404E423C00
+	HEX 0042427E42424200003E080808083E00
+	HEX 0002020242423C000044487048444200
+	HEX 0040404040407E000042665A42424200
+	HEX 004262524A464200003C424242423C00
+	HEX 007C42427C404000003C4242524A3C00
+	HEX 007C42427C444200003C403C02423C00
+	HEX 00FE1010101010000042424242423C00
+	HEX 004242424224180000424242425A2400
+	HEX 00422418182442000082442810101000
+	HEX 007E040810207E00000E080808080E00
+	HEX 00004020100804000070101010107000
+	HEX 001038541010100000000000000000FF
+	HEX 001C227820207E00000038043C443C00
+	HEX 0020203C22223C0000001C2020201C00
+	HEX 0004043C44443C000000384478403C00
+	HEX 000C10181010100000003C44443C0438
+	HEX 00404078444444000010003010103800
+	HEX 00040004040424180020283030282400
+	HEX 0010101010100C000000685454545400
+	HEX 00007844444444000000384444443800
+	HEX 000078444478404000003C44443C0406
+	HEX 00001C20202020000000384038047800
+	HEX 0010381010100C000000444444443800
+	HEX 00004444282810000000445454542800
+	HEX 000044281028440000004444443C0438
+	HEX 00007C0810207C00000E083008080E00
+	HEX 00080808080808000070100C10107000
+	HEX 00142800000000003C4299A1A199423C
+	HEX 00000000000000000010101010001000
+	HEX 002424000000000000247E24247E2400
+	HEX 00083E283E0A3E080062640810264600
+	HEX 001028102A443A000008100000000000
+	HEX 00040808080804000020101010102000
+	HEX 000014083E081400000008083E080800
+	HEX 0000000000080810000000003E000000
+	HEX 00000000001818000000020408102000
+	HEX 003C464A52623C000018280808083E00
+	HEX 003C42023C407E00003C420C02423C00
+	HEX 00081828487E0800007E407C02423C00
+	HEX 003C407C42423C00007E020408101000
+	HEX 003C423C42423C00003C42423E023C00
+	HEX 00000010000010000000100000101020
+	HEX 00000408100804000000003E003E0000
+	HEX 0000100804081000003C420408000800
+	HEX 003C4A565E403C00003C42427E424200
+	HEX 007C427C42427C00003C424040423C00
+	HEX 0078444242447800007E407C40407E00
+	HEX 007E407C40404000003C42404E423C00
+	HEX 0042427E42424200003E080808083E00
+	HEX 0002020242423C000044487048444200
+	HEX 0040404040407E000042665A42424200
+	HEX 004262524A464200003C424242423C00
+	HEX 007C42427C404000003C4242524A3C00
+	HEX 007C42427C444200003C403C02423C00
+	HEX 00FE1010101010000042424242423C00
+	HEX 004242424224180000424242425A2400
+	HEX 00422418182442000082442810101000
+	HEX 007E040810207E00000E080808080E00
+	HEX 00004020100804000070101010107000
+	HEX 001038541010100000000000000000FF
+	HEX 001C227820207E00000038043C443C00
+	HEX 0020203C22223C0000001C2020201C00
+	HEX 0004043C44443C000000384478403C00
+	HEX 000C10181010100000003C44443C0438
+	HEX 00404078444444000010003010103800
+	HEX 00040004040424180020283030282400
+	HEX 0010101010100C000000685454545400
+	HEX 00007844444444000000384444443800
+	HEX 000078444478404000003C44443C0406
+	HEX 00001C20202020000000384038047800
+	HEX 0010381010100C000000444444443800
+	HEX 00004444282810000000445454542800
+	HEX 000044281028440000004444443C0438
+	HEX 00007C0810207C00000E083008080E00
+	HEX 00080808080808000070100C10107000
+	HEX 00142800000000003C4299A1A199423C
+
+ECHAR	EQU	$
+
+****************************************
+*          INITIALISE ROM
+****************************************
+
+INITROM		DI
+		LD	SP,STACK		;SET STACK
+
+		and	a
+		cp	#11
+		ld	a,0
+		jr	NZ,@norm
+
+		inc	a
+@norm: 	ld	(CGB),a
+
+		XOR	A
+		LD	(TESTFAIL),A
+
+		LDZ	(IF),A
+		LDZ	(IE),A
+
+		LD	HL,#FEFF
+		LD	B,0
+		XOR	A
+@LOOP3		LD	(HLD),A
+		DJNZ	@LOOP3
+
+		ld	a,#0a			;EXT RAM CS/ON(ChipSelect)
+		ld	(#0000),A
+
+		LD	A,%11100100
+		LDZ	(BGP),A
+
+		LD	A,%11100100
+		LDZ	(OBP0),A
+
+		LD	A,%11100100
+		LDZ	(OBP1),A
+
+		LD	A,%10010011
+		LDZ	(LCDC),A
+
+		call	SetCGBPal
+
+		CALL	COPY			;COPY CHRS INTO VMEM
+		CALL	CLS
+
+;--------------------
+
+		CALL	PRINT
+		DB	AT,1,0,"GAMEBOY DL1. V2.9"
+		DB	AT,2,0,"MUSIC DEVCART"
+		DB	AT,3,0,"(C) A.R.HARTLEY 1999"
+		DB	STOP
+
+		JP	INIT
+
+;--------------------
+
+
+		CALL	PRINT
+		DB	AT,1,0,"GAMEBOY DL1."
+		DB	AT,2,0,"SWITCH FOR RAM"
+		DB	AT,3,0,"START FOR ROM"
+		DB	AT,4,0,"SELECT FOR COMMS"
+		DB	STOP
+
+		LD	HL,SETRAM		;GET FROM
+		LD	DE,#C200		;GOTO
+		LD	BC,512
+
+@1		LD	A,(HLI)			;DO LDIR
+		LD	(DE),A
+		INC	DE
+		DEC	BC
+		LD	A,B
+		OR	C
+		JR	NZ,@1
+
+		JP	#C200
+
+********************************************************************************
+* 		    RELOCATABLE RAM SWITCHING CODE
+********************************************************************************
+
+SETRAM		DI
+	
+		LD	HL,#0000		;GET FROM
+		LD	DE,#C800		;GOTO
+		LD	BC,COPYLEN
+
+@L1		LD	A,(HLI)			;DO LDIR
+		LD	(DE),A
+		INC	DE
+		DEC	BC
+		LD	A,B
+		OR	C
+		JR	NZ,@L1
+
+		LD	A,#00			;SELECT RAM
+		LD	(BANKSEL),A
+
+****************************************
+*	   READ GAMEBOY KEYS 
+*	   ~~~~~~~~~~~~~~~~~
+*	   0 = A    : 1 = B
+*	   2 = SEL  : 3 = START
+****************************************      
+
+@L2		LD	A,#10		;SELECT KEYPAD DATA
+		LDZ	(#FF00),A
+
+		NOP			;WAIT FOR PORT TO SETTLE
+		NOP
+		NOP
+		NOP
+		NOP
+		NOP
+
+		LDZ	A,(#FF00)		;READ KEY DATA
+		AND	#0F
+		CPL
+		LD	C,A
+
+		LD	A,#30
+		LDZ	(#FF00),A
+
+		BIT	3,C
+		JP	NZ,INIT
+
+		BIT	2,C
+		JP	NZ,COMMS_TEST
+		
+****************************************
+*          WAIT FOR RAM SWITCH
+****************************************
+
+
+		LD	HL,0
+
+		LD	(HL),#0F
+		LD	A,(HL)
+		CP	#0F
+		JR	NZ,@L2
+		
+		LD	(HL),#F0
+		LD	A,(HL)
+		CP	#F0
+		JR	NZ,@L2
+
+		LD	(HL),#FF
+		LD	A,(HL)
+		CP	#FF
+		JR	NZ,@L2
+
+		LD	(HL),#D9
+		LD	A,(HL)
+		CP	#D9
+		JR	NZ,@L2
+
+****************************************
+*            CLR OUT ALL RAM
+****************************************
+
+		LD	B,32   			;AMOUNT OF RAM TO CLEAR
+		LD	C,#00			;START PAGE
+
+@CLRB		LD	A,C			;SET THIS BANK
+		LD	(BANKSEL),A
+
+		LD 	HL,#4000		;CLEAR FROM #4000 - #7FFF
+		LD	DE,#0100
+
+@CLB2		LD	(HL),#FF   		;DO RAM TEST FILL WITH #FF
+		LD	A,(HL)
+		CP	#FF
+		JR	NZ,@FAIL
+
+     		LD	(HL),#00 		;FILL WITH #00
+		LD	A,(HL)
+		CP	#00
+		JR	NZ,@FAIL
+
+		LD	A,C
+		LD	(HLI),A		
+		DEC	DE
+		LD	A,D
+		OR	E
+		JR	NZ,@CLB2
+
+		INC	C
+		DEC	B
+		JR	NZ,@CLRB		
+
+		JR	@CONT
+
+@FAIL		XOR	A			;RAM FAILED TEST
+		LD	(BANKSEL),A		;SO PAGE IN ROM	
+
+		LD	A,L   			;SAY WHERE RAM FAILED
+		LD	(#C000),A  		
+		LD	A,H
+		LD	(#C001),A
+		LD	A,C
+		LD	(#C002),A		;+ BANK FAILED
+		
+		LD	HL,#9800		;RAMTEST FAILED
+		LD	(HL),"*"-32
+
+		LD	A,1	    		;SAY RAM TEST FAILED
+		LD	(TESTFAIL),A
+
+****************************************
+*	     COPY ROM TO RAM
+****************************************
+		
+@CONT		LD	A,#00
+		LD	(BANKSEL),A
+
+		LD	HL,#C800		;GET FROM
+		LD	DE,#0000		;GOTO
+		LD	BC,COPYLEN
+
+@L3		LD	A,(HLI)			;DO LDIR
+		LD	(DE),A
+		INC	DE
+		DEC	BC
+		LD	A,B
+		OR	C
+		JR	NZ,@L3
+
+		JP	MESSAGES
+
+****************************************
+*         END OF PROGRAM
+****************************************
+
+END		EQU	$
+		END
+

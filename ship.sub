@@ -1,0 +1,1620 @@
+********************************************************************************
+* 			 ASTERIODS CONTROL PROGRAMS
+********************************************************************************
+
+		IndexBase TaskBase
+
+****************************************
+*			Init Tag
+****************************************
+
+		MemB	Tagged
+		MemW	TagAnim
+		MemW	TagTime
+
+InitTag:
+		ld		a,(game_type)
+		cp		6
+		ret		nz
+
+		xor		a
+		ld		(Tagged),a
+		ld		(TagTime),a
+
+		ld		hl,seq_it
+		call	InitSeq
+		stm		TagAnim,hl
+		ret
+
+****************************************
+*			Tag Control
+****************************************
+
+DispTagged:
+		ld		a,(game_type)
+		cp		6
+		ret		nz
+
+		ld		a,(Connect)
+		and		a
+		ret		z
+
+		call	ImTagged		
+		jp		nc,@Dtag			;ret if not tagged
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldm		hl,TagAnim			;Seq num
+		call	RunSeq
+		ret
+
+@Dtag:								;Run Dummy Tag
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ld		hl,seq_DummyIt		;Seq num
+		ld		a,0					;set the group
+		ld		d,0					;index
+		call	IndexSeq
+		ret
+
+****************************************
+*
+****************************************
+
+ImTagged:
+
+		ld		a,(Tagged)
+		ld		b,a
+		
+		ldx		c,Remote
+		ld		a,(Master)
+		xor		c
+		cp		b
+		jr		nz,@1
+
+		scf					;say im tagged
+		ret
+
+@1:		or		a
+		ret
+
+****************************************
+*			Ships keys
+****************************************
+
+		MemB	ShipKeys
+		MemB	ShipTrig
+		MemB	ShipOrKeys1
+		MemB	ShipOrKeys2
+		MemB	ShipOrKeys
+
+PipeKeys:
+
+		ldx		a,Remote
+		and		a
+		jr		nz,PipeRemote
+
+PipeOne:
+		ld		h,>Remap
+
+		ld		a,(Keys)
+		ld		l,a
+		ld		a,(hl)
+		ld		(ShipKeys),a
+		
+		ld		a,(Trigger)
+		ld		l,a
+		ld		a,(hl)
+		ld		(ShipTrig),a
+		ld		b,a
+
+		ld		a,(ShipOrKeys1)
+		or		b
+		ld		(ShipOrKeys1),a
+		ld		(ShipOrKeys),a
+		ret
+
+PipeRemote:
+		ld		a,(InKeys)
+		ld		(ShipKeys),a
+		
+		ld		a,(InTrig)
+		ld		(ShipTrig),a
+		ld		b,a
+
+		ld		a,(ShipOrKeys2)
+		or		b
+		ld		(ShipOrKeys2),a
+		ld		(ShipOrKeys),a
+		ret
+
+****************************************
+*			Mask Or Keys
+****************************************
+
+MaskOrKeys:
+		cpl
+		ld		c,a
+	
+		ldx		a,Remote
+		and		a
+		jr		nz,@remote
+
+		ld		a,(ShipOrKeys1)
+		and		c
+		ld		(ShipOrKeys1),a
+		ret
+
+@remote:
+		ld		a,(ShipOrKeys2)
+		and		c
+		ld		(ShipOrKeys2),a
+		ret		
+		
+****************************************
+*	 Handle All collision tests
+****************************************
+
+		MemW	RockBul
+		MemW	RockShip
+		MemW	ShipPow
+		MemW	ShipNmeBul
+		MemW	ShipPush
+		MemW	ShipFreeze
+		MemW	ShipMPWeap
+		MemW	ShipMPTag
+
+RunGroups:
+
+;		de = Group1 & Group2
+;		hl = Notifier Byte
+
+		ld		de,#0201		;check group 1 & 2 for collision		
+		ld		hl,RockBul		;Notifier
+		call	HitGroup
+
+		ld		a,(Cheat)
+		and		a
+		jr		nz,@cheat
+
+		ld		de,#0301		;check group 1 & 2 for collision		
+		ld		hl,RockShip		;Notifier
+		call	HitGroup
+
+@cheat:
+		ld		de,#0304		;check group 1 & 2 for collision		
+		ld		hl,ShipPow		;Notifier
+		call	HitGroup
+
+		ld		de,#0305		;check group 1 & 2 for collision		
+		ld		hl,ShipNmeBul		;Notifier
+		call	HitGroup
+
+		ld		de,#0306		
+		ld		hl,ShipPush
+		call	HitGroup
+
+		ld		de,#0307		
+		ld		hl,ShipFreeze
+		call	HitGroup
+
+;1 MP Freeze bullets
+;2 MP Elec Short
+;3 MP Slow down
+;4 MP Point Double
+;5 MP Disable Thrust
+;6 MP Disable Weapons
+
+		ld		de,#0308		;MP bullet
+		ld		hl,ShipMPWeap
+		call	HitGroup
+
+		ld		de,#090a		;MP bullet
+		ld		hl,ShipMPTag
+		call	HitGroup
+
+		ret
+
+****************************************
+*
+****************************************
+
+SetShipPos:
+
+		ld		a,(Connect)
+		cp		1
+		jr		z,@twoplay
+		
+		stn		XCoord,#5000
+		stn		YCoord,#4800
+
+		ld		a,(ThisZone)
+		cp		2
+		jr		z,@Bhole
+		cp		5
+		ret		nz
+
+		stn		XCoord,#5000
+		stn		YCoord,#8000
+
+@bhole:
+		stn		XCoord,#8000
+		stn		YCoord,#6400
+		ret		
+
+@twoplay:
+
+		stn		XCoord,#8000
+		stn		YCoord,#6400
+
+		ldx		c,Remote
+		ld		a,(Master)
+		xor		c
+		ret		z
+
+		stn		XCoord,#2000
+		stn		YCoord,#6400
+
+		ld		a,(ThisZone)
+		cp		5
+		ret		nz
+
+		stn		YCoord,#8000
+
+		ret
+
+****************************************
+*		Set the Ship States
+****************************************
+
+		MemB	ShipState1
+		MemB	ShipState2
+		MemB	ShipPoll
+	
+SetShipState:
+		ld		c,a
+		
+		ldx		a,Remote
+		and		a
+		jr		nz,@Remote
+
+		ld		a,c
+		ld		(ShipState1),a
+		ret
+@remote:
+
+		ld		a,c
+		ld		(ShipState2),a
+		ret
+
+****************************************
+*	    	SET UP SHIP
+****************************************
+
+		MemB	ShipInit			;not used anymore
+		MemB	ShipTask
+		
+INIT_REMOTE:
+
+		Task	1
+		call	GetTask
+
+		stx		Owner,0
+
+		ld		a,2
+		ld		(ThisTask),a
+
+		stx		Remote,1
+
+		call	SetShipPos
+
+		jp		InitRemote
+
+INIT_SHIP:
+
+		Task	0
+		call	GetTask
+
+		stx		Owner,#8a
+
+		ld		a,1
+		ld		(ThisTask),a
+
+		stx		Remote,0
+
+		call	SetShipPos
+
+InitRemote:
+
+;** Don't need this any more variables set outside
+
+;		ld		a,(ShipInit)
+;		and		a
+;		jp		z,@noinit
+;		stn		Score,0
+;		stx		Ships,3
+;@noinit:
+
+		stx		DefCount,3
+
+		stx		B_Count,0
+		stx		B_Weapon,0
+
+		ldw		h,l,Score
+		call	SetScore
+
+		ldx		a,Ships
+		call	SetShips
+		
+		ldx		a,DefCount
+		call	SetDefs
+
+		ldx		a,B_Count		;amount of weapons
+		call	SetWeapNum
+
+		ldx		a,B_Weapon
+		call	SetWeap			;set weapon type in panel
+
+		stn		Anim,0
+		stn		SeqOvl,0
+		stx		SeqOvlFlag,0
+
+		stn		XVel,0 			;X SPEED
+		stn		YVel,0			;Y SPEED
+
+		stn		Angle,0
+		stx		BackChan,0		;6
+		stx		WideTime,0		
+
+		move	ShipAppear
+
+		xor		a
+		ld		(ThisTask),a
+
+		Task	0
+
+		ldx		a,Remote
+		and		a
+		jp		z,PutTask
+
+		Task	1
+		jp		PutTask
+
+****************************************
+*         MAIN ENTRY FOR SHIP
+****************************************
+
+ShipAppear:
+
+		stx		B_Active,0
+
+		stx		Anim,0				;get the index
+		stn		XVel,0 				;X SPEED
+		stn		YVel,0				;Y SPEED
+		stn		Angle,0
+		stx		Count,50
+		stx		B_Active,0
+
+
+;*done* 1 MP Freeze bullets
+;*done* 2 MP Elec Short
+;*done* 3 MP Slow down
+;4 MP Point Double
+;*done* 5 MP Disable Thrust
+;*done* 6 MP Disable Weapons
+
+;ShipMode,0
+;ModeTime,60
+
+		stx		ShipMode,0
+		stx		ModeTime,0
+
+		call	SetShipPos
+		call	AutoShield
+
+		ldx		c,Type
+		ld		b,0
+		ld		hl,seq_p1out
+		add		hl,bc
+		call	CallSeq
+
+		move	StartShip
+		
+StartShip:
+		ld		a,(ThisTask)
+		stx		Parent,a
+
+		call	PipeKeys			;pipe multiplayer keys
+
+		ld		a,State_Alive
+		call	SetShipState
+		
+		ldx		a,remote
+		and		a
+		jr		z,@connect
+		
+		ld		a,(connect)		;TONY IS THIS FOR A DISCONNECTED SHIP
+		cp		1
+		ret		nz
+
+@connect:
+
+		call	LogShip
+		call	HandleControl
+
+		call	ShipEndLevel
+
+;** DO VELOCITY STUFF
+
+		call	AddVels
+		
+		LDW		H,L,YVel
+		call	Do_Drag
+		STW		H,L,YVel
+
+		LDW		H,L,XVel
+		call	Do_Drag
+		STW		H,L,XVel
+
+		call	BlackGravity
+
+		call	ShipCollect
+		call	ShipFrozen
+
+		call	DispTagged
+		call	DispShip
+		call	DispOverlay
+
+		call	DecWeaponA
+
+		call	MPWeaponHit
+		call	MPTagHit
+
+		ld		hl,ShipPush+1
+		call	IfHit
+		call	c,DoShipPush
+
+		ld		hl,RockShip+1
+		call	IfHit
+		ret		nc
+
+		ldx		a,SeqOvlFlag		;defense
+		cp		1
+		ret		z
+
+		stx		B_Active,#ff
+
+		ld		hl,seq_bigbang
+		call	CallSeq
+
+		ldx		a,Ships
+		and		a
+		jr		z,@noships
+
+		dec		a
+		stx		Ships,a
+
+		call	SetShips
+
+@waitpoll:
+		xor		a
+		ld		(ShipPoll),a
+
+		ld		a,State_Dead
+		call	SetShipState
+		
+		move	$
+		
+		ld		a,(ShipPoll)
+		and		a
+		ret		z
+
+		move	ShipAppear
+		ret
+
+@noships:
+		ld		a,(Cheat)
+		and		a
+		jr		nz,@cheatmode
+		
+		ld		a,State_NoShips
+		call	SetShipState
+								;Ships == 0
+		move	$
+		ret
+
+@cheatmode:
+		stx		Ships,1
+		jp		@waitpoll
+
+****************************************
+*		   Ship Disappear
+****************************************
+
+		MemB	EndLevel
+
+ShipEndLevel:
+		ld		a,(EndLevel)
+		and		a
+		ret		z
+
+		move	$
+
+		;drag to start position
+
+		move	$
+		
+		ldx		c,Type
+		ld		b,0
+		ld		hl,seq_p1in
+		add		hl,bc
+		call	CallSeq
+
+		move	$
+
+		ld		a,(EndLevel)		;Wait for level to start
+		and		a
+		ret		nz
+		
+		jp		ShipAppear
+
+****************************************
+*		   Ship Wait
+****************************************
+
+ShipWait:
+		move	$
+		ret
+
+****************************************
+*	Test for mult-player weapon hit
+****************************************
+
+MPWeaponHit:
+		ldx		a,ModeTime
+		and		a
+		jr		z,@nodec
+
+		dec		a
+		stx		ModeTime,a
+
+		and		a
+		jr		nz,@nodec
+		
+		stx		ShipMode,0
+
+@nodec:
+		ld		a,(ShipMPWeap+1)	;test for my task
+		and		a
+		ret		z
+
+		ld		c,a
+		
+		ld		a,(ThisTask)		;was it my task
+		cp		c
+		ret		nz					;ret if not
+
+		ld		a,(ShipMPWeap)		;get the hitee task
+
+		push	bc
+		call	GetTaskHL			;get the task data
+		pop		bc
+
+		ret		c					;if dead task return
+
+		ld		de,Parent			;get it's parent
+		add		hl,de
+		ld		a,(hl)
+
+		cp		c					;if i'm hitting me
+		ret		z					;return
+
+		ld		de,Type-Parent		;get it's Type
+		add		hl,de
+		ld		a,(hl)				;a = MP Hit type
+		stx		ShipMode,a
+
+		stx		ModeTime,60
+		ret
+
+****************************************
+*	Test for mult-player weapon hit
+****************************************
+
+MPTagHit:
+		ld		a,(game_type)
+		cp		6
+		ret		nz
+
+		ld		a,(TagTime)
+		and		a
+		jr		z,@ok
+
+		dec		a
+		ld		(TagTime),a
+		ret
+
+@ok:
+		call	ImTagged
+		ret		nc
+
+		ld		a,(ShipMPTag)
+		and		a
+		ret		z
+
+;make sure I have'nt already got the tag
+
+		ld		a,(Tagged)
+		xor		1
+		ld		(Tagged),a
+		
+		ld		a,50
+		ld		(TagTime),a
+		
+		ld		de,seq_it
+		ldm		hl,TagAnim
+		call	ChangeSeq
+		ret
+
+****************************************
+*
+****************************************
+
+Hyperspace:
+		stn		XVel,0 			;X SPEED
+		stn		YVel,0			;Y SPEED
+
+		ld		hl,seq_hyp
+		call	CallSeq
+
+		ld		c,160
+		call	Random_Range
+		ld		h,a
+		ld		l,0
+		stw		h,l,XCoord
+
+		ld		c,120
+		call	Random_Range
+		ld		h,a
+		ld		l,0
+		stw		h,l,YCoord
+
+		Move	HyperWait
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ld		hl,seq_shipClear	;Seq num
+		ld		a,0					;set the group
+		ld		d,0					;index
+		call	IndexSeq
+		ret
+
+HyperWait:
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ld		hl,seq_shipClear	;Seq num
+		ld		a,0					;set the group
+		ld		d,0					;index
+		call	IndexSeq
+
+		ld		hl,RockShip+1
+		call	IfHit
+		ret		c
+
+		ld		hl,seq_hyp
+		call	CallSeq
+		
+		Move	StartShip
+		ret
+
+****************************************
+*
+****************************************
+
+DoShipPush:
+		ld		a,(ShipPush)			;get hitee
+		and		#7f
+		call	GetTaskCoords
+
+		;a = bullet angle
+
+*		c = Direction
+*		b = Fraction (Speed)
+
+		ld		c,a
+		ld		b,#06
+
+		push	bc
+		call	GetScaleDirX
+
+		ld		b,2
+		
+		ldw		h,l,XVel
+		add		hl,de
+
+		call	CapMax
+		jr		c,@cap
+
+		stw		h,l,XVel
+
+@cap:
+		pop		bc
+		call	GetScaleDirY
+
+		ld		b,2
+
+		ldw		h,l,YVel
+		add		hl,de
+
+		call	CapMax
+		ret		c
+
+		stw		h,l,YVel
+		ret
+
+****************************************
+*
+****************************************
+
+AutoShield:
+		ld		hl,seq_autoshield
+		call	InitSeq
+		stw		h,l,SeqOvl		;Use anim as seq handle
+		stx		SeqOvlFlag,1
+
+		ret
+
+****************************************
+*
+****************************************
+
+ShipFrozen:
+
+		ldx		a,SeqOvlFlag		;if already frozen
+		cp		2
+		ret		z					;return
+
+		ldx		a,ShipMode
+		cp		1
+		jr		z,@MPFreeze
+
+		ld		hl,ShipFreeze+1
+		call	IfHit
+		ret		nc
+
+@MPFreeze:
+
+		stx		ShipMode,0
+
+		ld		hl,seq_cocoon
+		call	InitSeq
+		stw		h,l,SeqOvl		;Use anim as seq handle
+		stx		SeqOvlFlag,2
+
+		ld		hl,0			;stop ship
+		stw		h,l,XVel
+		stw		h,l,YVel
+		ret
+
+****************************************
+*
+****************************************
+
+ShipCollect:
+
+		ldx		a,BackChan
+		and		a
+		ret		z
+
+		call	SetCollectData		
+
+		stx		BackChan,0
+
+		ldx		a,SeqOvlFlag
+		and		a
+		ret		nz
+
+		ld		hl,seq_pupcollect
+		call	InitSeq
+		stw		h,l,SeqOvl				;Use anim as seq handle
+		stx		SeqOvlFlag,0
+		ret
+
+****************************************
+*
+****************************************
+
+DispOverlay:
+		ldw		h,l,SeqOvl
+
+		ld		a,h
+		or		l
+		ret		z
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+
+		call	RunSeq
+		
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+		
+		ldw		h,l,SeqOvl			;Kill the seq
+		call	KillSeq
+		
+		ld		hl,0				;reset the overlay
+		stw		h,l,SeqOvl
+		stx		SeqOvlFlag,0
+		ret
+
+****************************************
+*
+****************************************
+
+DispShip:
+
+		ldx		a,SeqOvlFlag		;if already frozen
+		cp		2
+		ret		z					;return
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		and		#1f
+		ld		d,a
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+
+		call	SetShipXY
+		
+		push	bc
+		push	de
+
+
+;doms cheese player ship select
+
+		ldx		a,Type
+		
+		ld		hl,seq_p1		
+		and		a
+		jr		z,@d1				
+
+		ld		hl,seq_p2			;Seq num
+		dec		a
+		jr		z,@d1	
+
+		ld		hl,seq_p3
+		dec		a
+		jr		z,@d1	
+
+		ld		hl,seq_hidden
+		
+@d1:		
+		ld		a,0					;set the group
+		call	IndexSeq
+
+		pop		de
+		pop		bc
+
+;;		ret
+
+		ld		A,(ShipKeys)			;display thruster
+		bit   	BIT_KEY_UP,A
+		ret		z
+
+		ld		hl,seq_thrust1		;Seq num
+
+		ld		a,(Time)
+		and		1
+		ld		e,a
+
+		ld		a,0					;set the group
+		call	DualIndexSeq
+		ret
+		
+****************************************
+*		  demo controls
+****************************************
+		
+DemoControl
+			
+			ld		a,(time)
+			srl		a
+			srl		a
+			srl		a
+			and		7
+			ld		e,a
+			ld		d,0
+			ld		hl,demodata
+			add		hl,de
+			ld		a,(hl)
+			
+			ld		(shiporkeys),a
+			ld		(shipkeys),a
+
+			call	TonyDemo
+			ret
+
+demodata
+			db	KEY_UP
+			db	KEY_UP			;+KEY_LEFT
+			db	KEY_A
+			db	KEY_A			;+KEY_LEFT
+			db	0
+			db	KEY_UP			;+KEY_RIGHT
+			db	KEY_A			;+KEY_RIGHT
+			db	0				;KEY_RIGHT
+
+****************************************
+*
+****************************************
+
+TonyDemo:
+		call	FindHoming
+		;Home Task in a
+
+		and		a
+		ret		z
+		
+		call	GetTaskCoords
+		
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		ld		b,a
+
+		ld		c,8
+		call	TurnAngle
+		
+		stx		Angle,a
+		ret
+					
+****************************************
+*		  Handle controls
+****************************************
+
+HandleControl:
+
+		ldx		a,SeqOvlFlag		;if already frozen
+		cp		2
+		ret		z					;return
+
+		ld		a,(demomode)
+		and		a
+		call	nz,DemoControl
+
+
+		ldx		a,ShipMode
+		cp		3
+		jr		nz,@norm
+
+		ld		a,(Time)
+		and		3
+		ret		nz
+
+@norm:
+		ld		A,(ShipOrKeys)
+		bit    	BIT_KEY_A,A
+		call	NZ,Joy_FireA
+
+		ld		A,(ShipOrKeys)
+		bit    	BIT_KEY_B,A
+		jp		NZ,Joy_FireB
+
+		ld		A,(ShipKeys)
+		bit   	BIT_KEY_UP,A
+		call	NZ,Joy_Up
+
+		ld		A,(ShipTrig)
+		bit   	BIT_KEY_DOWN,A
+		call	NZ,Joy_Down
+
+		ld		A,(ShipKeys)
+		bit    	BIT_KEY_LEFT,A
+		call	NZ,Joy_Left
+
+		ld		A,(ShipKeys)
+		bit    	BIT_KEY_RIGHT,A
+		call	NZ,Joy_Right
+		ret
+
+****************************************
+*	   Fire Weapon on A Button
+****************************************
+
+Joy_FireA:
+		ldx		a,ShipMode		;test for disable weapons
+		cp		6
+		ret		z
+
+		ld		a,(Time)
+		and		3
+		ret		nz
+
+		ld		a,KEY_A
+		call	MaskOrKeys
+
+;		ld		hl,ShipOrKeys
+;		res		BIT_KEY_A,(hl)
+
+		ldx		a,WideTime
+		and		a
+		jr		nz,@UseWide
+
+		call	PushTask
+		
+		xor		a				;Normal bullets
+		call	Do_Weapon
+		
+		call	PopTask
+		ret
+
+@UseWide:
+
+		call	PushTask
+		
+		ld		a,13			;Wide shot
+		call	Do_Weapon
+		
+		call	PopTask
+		ret
+
+****************************************
+*	   Fire Weapon on B Button
+****************************************
+
+Joy_FireB:
+
+		ldx		a,ShipMode		;test for disable weapons
+		cp		6
+		ret		z
+
+		ld		a,(Time)
+		and		3
+		ret		nz
+
+;		ld		hl,ShipOrKeys
+;		res		BIT_KEY_B,(hl)
+
+		ld		a,KEY_B
+		call	MaskOrKeys
+
+		ldx		a,B_Count
+		and		a
+		ret		z
+
+		ldx		a,B_Weapon
+		cp		13				;wide shot
+		jr		z,@SetWide
+
+		ldx		c,B_Weapon
+		ldx		a,B_Active
+
+		and		a				;if no active weapon			
+		jr		z,@ok			;just do it
+		
+		cp		c				;the same weapon then return
+		ret		z
+
+@ok:
+		stx		B_Active,c		;save the active weapon
+
+		call	DecWeaponB
+
+		call	PushTask
+	
+		ldx		a,B_Weapon
+		call	Do_Weapon
+		
+		call	PopTask
+		ret
+
+@SetWide:
+
+		ldx		a,WideTime		;wait until done
+		and		a
+		ret		nz
+
+		call	DecWeaponB
+
+		stx		WideTime,5*30		;set wide shot time
+		ret
+
+****************************************
+*
+****************************************
+
+JOY_RIGHT:
+		ldx		a,ShipMode
+		cp		2
+		jr		z,JOY_LEFT1
+
+JOY_RIGHT1:
+
+		ldx		a,Angle
+		add		a,8
+		stx		Angle,a
+		RET
+
+****************************************
+*
+****************************************
+
+JOY_LEFT:
+		ldx		a,ShipMode
+		cp		2
+		jr		z,JOY_RIGHT1
+
+JOY_LEFT1:
+		ldx		a,Angle
+		sub		8
+		stx		Angle,a
+		RET
+
+****************************************
+*			Ship Defense
+****************************************
+
+JOY_DOWN:
+		ldx		a,DefCount
+		and		a
+		ret		z
+		
+		dec		a
+		stx		DefCount,a
+
+		call	SetDefs
+
+		ldx		a,Type
+		and		a
+		jr		z,Joy_Flip		;Joy_Hyper
+
+		dec		a
+		jr		z,Joy_Hyper		;Joy_Shield
+		
+;fall thru to flip ship_type=2	
+
+		jr		Joy_Shield
+
+JOY_FLIP:
+		ldx		a,Angle
+		add		a,128
+		stx		Angle,a
+		RET
+
+JOY_SHIELD:
+
+		ld		hl,seq_autoshield
+		call	InitSeq
+		stw		h,l,SeqOvl		;Use anim as seq handle
+
+		stx		SeqOvlFlag,1
+		ret
+
+Joy_Hyper:
+		Move	HyperSpace
+		ret
+
+****************************************
+*
+****************************************
+
+JOY_UP:
+		ldx		a,ShipMode		;test for disable thrust
+		cp		5
+		ret		z
+
+  		ldx		c,Angle
+
+		ld		a,4
+		ld		b,a
+		call	GetScaleDirX
+
+		ldw		h,l,XVel
+		add		hl,de
+		call	Cap_Vel
+		jr		c,@CAP
+		stw		h,l,XVel
+
+@CAP:
+   		ldx		c,Angle
+
+		ld		a,4
+		ld		b,a
+		call	GetScaleDirY
+
+		ldw		h,l,YVel
+		add		hl,de
+		call	Cap_Vel
+		ret		c
+		stw		h,l,YVel
+
+		ret
+
+****************************************
+*
+****************************************
+
+CAP_VEL:
+		ld	a,6			;(ShpMaxVel)	;6
+
+		ld	b,a
+		
+CapMax:
+		LD	A,H
+		BIT	7,A
+		JR	Z,@POS
+
+		CPL
+		INC	A
+
+		CP	b
+		CCF
+		RET
+@POS:
+		CP	b
+		CCF
+		RET
+
+
+****************************************
+*			Drag Object
+****************************************
+
+
+Drag:
+		LDW		H,L,YVel
+		call	Drag1
+		STW		H,L,YVel
+
+		LDW		H,L,XVel
+		call	Drag1
+		STW		H,L,XVel
+		ret
+
+****************************************
+*
+****************************************
+
+;GET 93%
+
+DO_DRAG:
+
+		ld		A,(ShipKeys)
+		bit   	BIT_KEY_UP,A
+		ret		nz
+
+Drag1:
+		LD		A,(TIME)
+		AND		1
+		RET		NZ
+
+		SRA		H
+		RR		L
+
+		LD		E,L				;DE = 1/2
+		LD		D,H
+	
+		SRA		H
+		RR		L
+	
+		LD		C,L				;BC = 1/4
+		LD		B,H
+
+		SRA		H
+		RR		L
+	
+		PUSH	HL				;SP = 1/8
+	
+		SRA		H
+		RR		L				;HL = 1/16
+
+		ADD		HL,DE			;1/16 + 1/2 + 1/4
+		ADD		HL,BC
+		POP		BC
+		ADD		HL,BC
+
+		LD	A,H
+		BIT	7,A
+		JR	Z,@POS
+
+		ld		a,h
+		cp		#ff
+		ret		nz
+		
+		ld		a,l
+		cp		#c0
+		ret		c
+		
+		ld		hl,0
+		RET	
+
+
+		ret
+
+@pos:
+		ld		a,h
+		and		a
+		ret		nz
+		
+		ld		a,l
+		cp		#40
+		ret		nc
+		
+		ld		l,0
+		RET	
+
+****************************************
+* 		  Blackhole gravity
+****************************************
+
+BlackGravity:
+		ld		a,(ThisZone)
+		cp		2
+		ret		nz
+
+		ldw		h,l,XCoord
+
+		ld		bc,-80*256
+		add		hl,bc
+		
+		call	ScaleHole
+
+		ld		bc,80*256
+		add		hl,bc
+
+		stw		h,l,XCoord	
+		
+		ldw		h,l,YCoord
+
+		ld		bc,-72*256
+		add		hl,bc
+
+		call	ScaleHole
+
+		ld		bc,72*256
+		add		hl,bc
+
+		stw		h,l,YCoord	
+
+		ldx		c,XVel
+		ldx		a,XVelH
+		or		c
+		ret		nz
+		
+		ldx		c,YVel
+		ldx		a,YVelH
+		or		c
+		ret		nz
+
+		ldx		a,XCoordH
+		srl		a
+		srl		a
+		cp		19
+		ret		nz
+
+		ldx		a,YCoordH
+		srl		a
+		srl		a
+		cp		17
+		ret		nz
+		
+		ld		a,(ThisTask)
+		ld		(RockShip+1),a
+
+;make the center deadly
+
+;		ld		c,78	;StartX
+;		ld		b,70	;StartY
+;		ld		e,82	;EndX
+;		ld		d,74	;EndY
+;		ld		a,1		;Say its a rock
+;		call	AddCollision
+		ret
+
+
+****************************************
+*
+****************************************
+
+ScaleHole:
+		ld		a,h
+
+		inc		a
+		cpl
+		ld		e,a
+		rla
+		sbc		a,a
+		ld		d,a
+		add		hl,de
+		add		hl,de
+		add		hl,de
+				
+		RET	
+
+****************************************
+*
+****************************************
+
+Explode:
+		ld		hl,seq_midbang
+
+SequenceAny:
+
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		MOVE	BANG
+BANG:
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		KillTask
+		ret
+
+****************************************
+*
+****************************************
+
+SeqParent:
+
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		move	SeqPar
+
+SeqPar:
+
+		ldx		a,Parent			;get parent task
+		call	GetTaskCoords
+
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		KillTask
+		ret
+
+****************************************
+*
+****************************************
+
+CallSeq:
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		pop		hl
+		stw		h,l,RetAdd
+
+		MOVE	StartSeq
+
+StartSeq:
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldw		h,l,RetAdd
+		jp		(hl)
+
+****************************************
+*
+****************************************
+
+CallSeqPar:
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		pop		hl
+		stw		h,l,RetAdd
+
+		MOVE	StartSeqP
+
+StartSeqP:
+
+		ldx		a,Parent			;get parent task
+		call	GetTaskCoords
+
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		ldw		h,l,RetAdd
+		jp		(hl)
+
+****************************************
+*	  Add Scores (Called frm NME)
+*			 de = amount
+*		a = Hitee task number
+****************************************
+
+AddScore:
+		push	de
+
+		call	GetTaskHL
+		ld		de,Owner
+		add		hl,de
+		
+		pop		de
+		
+		ld		a,(hl)
+		cp		#8a			;test for remote
+		ret		nz
+
+		ldba	Score,0
+		ld		l,a
+
+		ldba	ScoreH,0
+		ld		h,a
+
+		add		hl,de
+
+		ld		a,l
+		stba	Score,0
+
+		ld		a,h
+		stba	ScoreH,0
+
+		call	SetScore
+		ret
+		
+****************************************
+*
+****************************************
+
+ShowThrust:
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		and		#1f
+		ld		d,a
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_thrust1		;Seq num
+		ld		a,0					;set the group
+		call	IndexSeq
+		ret

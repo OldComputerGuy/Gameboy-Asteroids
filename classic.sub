@@ -1,0 +1,782 @@
+
+;classic asteroids a la mychael liversay (it must be good)
+
+;initialise game from here
+ClassicType:
+
+		ld		hl,PAL_arcadepal
+		call	AnyBackGnd
+
+		call	ScrToCopy				; Copy the work screen to the copy screen
+		call	InitPanel
+
+		call	InitClxShip
+
+		ld		a,(ThisLevel)
+		add		a,3
+		cp		8
+		jr		c,@a1
+		ld		a,8					;can go higher but runs out when splitting
+		
+@a1		push	af
+		call	Init_Arcade_Ast
+		pop		af
+		dec		a
+		jr		nz,@a1
+		call	InitClassicEnemy		
+		ret
+
+
+InitClxShip:
+
+		Task	0
+		call	GetTask
+
+		ld		a,(Ship_Type)
+		stx		Type,a
+
+		ld		a,1
+		ld		(ThisTask),a
+
+		stx		Remote,0
+
+
+		ld		a,(ShipInit)
+		and		a
+		jp		z,@noinit
+
+		
+		stn		XVel,0 			;X SPEED
+		stn		YVel,0			;Y SPEED
+	
+		stn		XCoord,#5000
+		stn		YCoord,#4800
+
+	
+		stn		Score,0
+		stx		Ships,3
+		stx		DefCount,3
+
+		stx		B_Count,0
+		stx		B_Weapon,0
+
+		xor		a
+		ld		(ShipInit),a
+
+@noinit:
+		ldw		h,l,Score
+		call	SetScore
+
+		ldx		a,Ships
+		call	SetShips
+		
+		ldx		a,DefCount
+		call	SetDefs
+
+		ldx		a,B_Count
+		call	SetWeapNum
+
+		stn		Angle,0
+
+		stn		Anim,0
+		stn		SeqOvl,0
+		stx		SeqOvlFlag,0
+		
+		stx		BackChan,0
+	    stx		WideTime,0		
+
+		move	ShipClassic
+
+		xor		a
+		ld		(ThisTask),a
+
+		Task	0
+		jp		PutTask
+
+****************************************
+*         MAIN ENTRY FOR SHIP
+****************************************
+
+ShipClassic:
+		ld		a,(ThisTask)
+		stx		Parent,a
+
+		call	PipeOne				;pipe multiplayer keys
+
+		call	LogShip
+		call	ClassicControl
+
+;** DO VELOCITY STUFF
+
+		call	AddVels
+		
+		LDW		H,L,YVel
+		call	Do_Drag2
+		STW		H,L,YVel
+
+		LDW		H,L,XVel
+		call	Do_Drag2
+		STW		H,L,XVel
+	
+		call	DispClassic
+	
+		ld		hl,RockShip+1
+		call	IfHit
+		ret		nc
+	
+	;****************
+		ldx		a,Ships
+		and		a
+		jr		z,@noships
+
+		dec		a
+		stx		Ships,a
+
+		call	SetShips
+
+@waitpoll:
+		xor		a
+		ld		(ShipPoll),a
+
+		ld		a,State_Dead
+		call	SetShipState
+		
+		move	$
+		
+		ld		a,(ShipPoll)
+		and		a
+		ret		z
+
+		ld		hl,seq_arpshipexpl
+		call	CallSeq
+
+		MOVE	ShipClassicAppear			;or ship_appear
+
+		stx		Anim,0				;get the index
+		stn		XVel,0 				;X SPEED
+		stn		YVel,0				;Y SPEED
+		stn		Angle,0
+		stx		Count,50
+
+		stn		XCoord,#5000
+		stn		YCoord,#4800
+
+		ret
+
+@noships:
+		ld		a,(Cheat)
+		and		a
+		jr		nz,@cheatmode
+		
+		ld		a,State_NoShips
+		call	SetShipState
+								;Ships == 0
+		move	$
+		ret
+
+@cheatmode:
+		stx		Ships,1
+		jp		@waitpoll
+		
+		
+ShipClassicAppear:
+	
+		ld		a,State_Alive
+		call	SetShipState
+		
+		ld		hl,RockShip+1
+		call	IfHit
+		ret		c					;keep returning untill clear		
+		
+		Move	ShipClassic
+		ret
+		
+		if		0
+	
+	;****************
+		ld		hl,seq_arpshipexpl
+		call	CallSeq
+
+		MOVE	ShipClassic
+
+		stx		Anim,0				;get the index
+		stn		XVel,0 				;X SPEED
+		stn		YVel,0				;Y SPEED
+		stn		Angle,0
+		stx		Count,50
+
+		stn		XCoord,#5000
+		stn		YCoord,#4800
+
+		ldx		a,Ships
+		dec		a
+		and		7
+		stx		Ships,a
+
+		call	SetShips
+		ret
+
+		endif
+
+****************************************
+*
+****************************************
+		
+DispClassic:
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		and		#1f
+		ld		d,a
+
+		ldx		a,YCoordH			;Coords in bc
+		ld		b,a
+		ld		(ShipY1),a
+		
+		ldx		a,XCoordH
+		ld		c,a
+		ld		(ShipX1),a
+		
+		push	bc
+		push	de
+
+
+		ld		hl,seq_arpship
+		
+@d1:		
+		ld		a,0					;set the group
+		call	IndexSeq
+
+		pop		de
+		pop		bc
+
+
+		ld		A,(ShipKeys)			;display thruster
+		bit    	BIT_KEY_B,A
+		ret		z
+
+		ld		hl,seq_arthrust
+
+@d2:
+		ld		a,0					;set the group
+		call	IndexSeq
+		ret
+		
+ClassicControl:
+
+		ld		A,(ShipOrKeys)
+		bit    	BIT_KEY_A,A
+		call	NZ,Joy_ClxA
+
+		ld		A,(ShipKeys)
+		bit    	BIT_KEY_B,A
+		call	NZ,ClassicThrust
+
+		ld		A,(ShipTrig)
+		bit   	BIT_KEY_DOWN,A
+		call	NZ,Clx_Hyper
+
+		ld		A,(ShipKeys)
+		bit    	BIT_KEY_LEFT,A
+		call	NZ,Joy_ClxLeft
+
+		ld		A,(ShipKeys)
+		bit    	BIT_KEY_RIGHT,A
+		call	NZ,Joy_ClxRight
+		ret
+
+
+****************************************
+*
+****************************************
+
+Joy_ClxRight:
+		ld		a,9				;(ShpRotSpd)
+		ld		b,a
+
+		ldx		a,Angle
+		add		a,b
+		stx		Angle,a
+		RET
+
+****************************************
+*
+****************************************
+
+Joy_ClxLeft:
+		ld		a,8				;(ShpRotSpd)
+		ld		b,a
+
+		ldx		a,Angle
+		sub		b
+		stx		Angle,a
+		RET
+
+
+****************************************
+*
+****************************************
+
+Clx_Hyper:
+		stn		XVel,0 			;X SPEED
+		stn		YVel,0			;Y SPEED
+
+		ld		c,160
+		call	Random_Range
+		ld		h,a
+		ld		l,0
+		stw		h,l,XCoord
+
+		ld		c,120
+		call	Random_Range
+		ld		h,a
+		ld		l,0
+		stw		h,l,YCoord
+		ret
+
+****************************************
+*
+****************************************
+
+ClassicThrust:
+   		ldx		c,Angle
+;		ld		a,					;(ShpThrSpd)		;2
+
+		ld		a,4
+		ld		b,a
+		call	GetScaleDirX
+
+		ldw		h,l,XVel
+		add		hl,de
+		call	Cap_Vel2
+		jr		c,@CAP
+		stw		h,l,XVel
+
+@CAP:
+   		ldx		c,Angle
+;		ld		a,(ShpThrSpd)		;2
+
+		ld		a,4
+		ld		b,a
+		call	GetScaleDirY
+
+		ldw		h,l,YVel
+		add		hl,de
+		call	Cap_Vel2
+		ret		c
+		stw		h,l,YVel
+
+		ret
+
+CAP_VEL2:
+		ld	a,6						;(ShpMaxVel)	;6
+		ld	b,a
+		
+		LD	A,H
+		BIT	7,A
+		JR	Z,@POS
+
+		CPL
+		INC	A
+
+		CP	b
+		CCF
+		RET
+@POS:
+		CP	b
+		CCF
+		RET
+
+
+****************************************
+*
+****************************************
+
+;GET 93%
+
+DO_DRAG2:
+
+		ld		A,(ShipKeys)
+		bit   	BIT_KEY_B,A
+		ret		nz
+
+		LD		A,(TIME)
+		AND		3
+		RET		NZ
+
+		SRA		H
+		RR		L
+
+		LD		E,L				;DE = 1/2
+		LD		D,H
+	
+		SRA		H
+		RR		L
+	
+		LD		C,L				;BC = 1/4
+		LD		B,H
+
+		SRA		H
+		RR		L
+	
+		PUSH	HL				;SP = 1/8
+	
+		SRA		H
+		RR		L				;HL = 1/16
+
+		ADD		HL,DE			;1/16 + 1/2 + 1/4
+		ADD		HL,BC
+		POP		BC
+		ADD		HL,BC
+
+		LD	A,H
+		BIT	7,A
+		JR	Z,@POS
+
+		ld		a,h
+		cp		#ff
+		ret		nz
+		
+		ld		a,l
+		cp		#c0
+		ret		c
+		
+		ld		hl,0
+		RET	
+
+
+		ret
+
+@pos:
+		ld		a,h
+		and		a
+		ret		nz
+		
+		ld		a,l
+		cp		#40
+		ret		nc
+		
+		ld		l,0
+		RET	
+
+
+****************************************
+*			 PLayer Bullets
+****************************************
+
+InitEClxBul:
+
+		call	PushTask
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ldx		c,Angle
+
+		ld		a,#60
+		ld		b,a
+		call	AddScaleDir
+
+		ld		a,30
+		stx		Count,a
+
+		Move	RunEClxBul		
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunEClxBul:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_arpshipbul		;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@Quit:
+		KillTask
+		ret
+
+
+****************************************
+*	   Fire Weapon on A Button
+****************************************
+
+Joy_ClxA:
+		ld		a,(Time)
+		and		3
+		ret		nz
+
+		ld		hl,ShipOrKeys1
+		res		BIT_KEY_A,(hl)
+
+		call	PushTask
+		call	InitEClxBul		
+		call	PopTask
+		ret
+
+InitClassicEnemy:
+		ld		a,(game_type)
+		cp		2
+		ret		nz
+
+		xor		a
+		ld		(ThisTask),a
+
+		move	StartClxe
+		jp		AddTask
+		
+
+StartClxe:
+		ld		a,(ThisLevel)		;delay time in seconds
+		srl		a				;0-7
+		ld		e,a
+		ld		a,10			;15 secs
+		sub		e				;15-8 secs
+
+		stx		Count,a
+		move	ClxeWait
+
+ClxeWait:
+		ld		a,(Time)
+		and		31
+		ret		nz
+
+		call	DecCounter
+		ret		nz
+	
+
+;InitClxSaucer:
+
+		stx		Angle,0			;Firing angle
+
+;		stn		YVel,0
+;		stn		XVel,-192
+
+		ld		a,8				;left or right
+		call	SetRegion
+
+		ld		a,(RegDirX)								
+		ld		hl,-320
+		cp		-1
+		jr		z,@dd
+		ld		hl,320
+
+@dd		stw		h,l,XVel
+
+		ld		hl,0
+		stw		h,l,YVEL
+		
+								;set corner positions		
+		call	Random
+		ld		hl,#2000
+		and		64
+		jr		z,@ty
+		
+		ld		hl,#7000
+
+@ty		stw		h,l,YCOORD			
+		
+
+		ld		a,(ThisLevel)
+		cp		3
+		jr		nc,@smallship
+
+@slow	
+		ld		hl,seq_arsauc1
+		xor		a
+		jr		@str
+				
+@smallship:	
+		ld		hl,seq_arsauc2
+		ld		a,1		
+
+@str	stx		TYPE,a
+		
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		stx		Count,48		;before change y direction
+		move	RunClxSauser
+
+RunClxSauser:	
+
+		call	AddVelsOff
+
+		ld		a,(ShipX1)
+		ld		c,a		
+		ld		a,(ShipY1)
+		ld		b,a
+		
+		ldx		a,Type
+		inc		a			;1 or 2
+		add		a,a
+		ld		e,a			;4					;
+		call	GoAngle				;Swing turret round
+
+;		fire every 2 secs saucer every 1 secs super 
+		ld		e,15
+		ldx		a,Type
+		and		a
+		jr		nz,@fdom
+		ld		e,31
+
+@fdom	ld		a,(Time)
+		and		e
+		call	z,InitClxEBul		
+		
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	LogNME				;Log this as a nme
+
+		
+		call	DecCounter			;test to change y dir
+		jr		nz,@jk
+		
+		stn		YVel,0				;set to zero
+		call	Random
+		and		3
+		call	nz,HomeY2
+		stx		Count,24
+
+@jk
+		
+;test for kill
+		call	OffScreen
+		jr		nc,@testhit
+		
+		ldw		h,l,Anim
+		call	KillSeq		
+		jp		StartClxe
+
+@testhit		
+		ld		hl,RockBul
+		call	IfHit
+		ret		nc
+		
+;please check the explosion art
+		ld		hl,seq_arrockexpl
+		call	CallSeq
+
+		jp		StartClxe
+		ret
+		
+
+****************************************
+*			 Enemy Bullets
+****************************************
+
+InitClxEBul:
+
+		call	PushTask
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ldx		c,Angle
+
+		ld		b,#60
+		call	AddScaleDir
+
+		ld		a,30
+		stx		Count,a
+
+		Move	RunClxEBul		
+		call	AddTask
+
+		call	PopTask
+		ret
+
+RunClxEBul:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_arsaucbul		;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@Quit:
+		KillTask
+		ret
+
+
+
+HomeY2:
+
+		stn		YVel,0
+
+		ld		a,(ShipY)
+		ld		c,a
+
+		ldx		a,YCoordH
+		cp		c
+		ret		z
+		jr		nc,@gr
+
+		stn		YVel,256
+		ret
+@gr:
+		stn		YVel,-256
+		ret
+
+
+		if	0
+		
+;doms rock speed
+****************************************
+*			 Get Speed
+****************************************
+
+GetAstSpeed:
+		;Patch
+							;doms new code mainly for classic
+		ld		a,(ThisLevel)
+		and		15-3		;increase every 4 levels by 4 pixels
+		
+		add		a,16
+		ld		c,a
+		ldx		a,Size
+		add		a,a
+		add		a,a
+		add		a,a
+		add		a,c
+		ld		c,a
+		
+		
+		call	Random
+		and		31
+		sub		16				;+- 16
+		add		a,c
+		ret
+
+
+		endif		
+

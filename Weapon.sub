@@ -1,0 +1,1145 @@
+********************************************************************************
+* 			 		  Asteroids Pick-Ups
+********************************************************************************
+
+		IndexBase TaskBase
+
+****************************************
+*		 Get Seq for type
+*			 a = Type
+*			 c = size
+*	 Returns z set for null type
+****************************************
+
+WeaponTab:
+		dw	InitShipBullet		;0	Standard Bullet
+		dw	InitArmaged			;1	Armageddon
+		dw	InitNormMine		;2	Normal Mines
+		dw	InitGMissile		;3	Guided Missiles
+		dw	InitGunSat			;4	GunSat
+		dw	InitSmart			;5	Smart Bomb
+		dw	InitIon				;6	Ion Deflector
+		dw	InitSThrust			;7	Super Thrust
+		dw	InitDrill			;8	Drill Shot
+		dw	InitRShield			;9	Ramming Shield
+		dw	InitTrigMine		;10	Trigger Bomb
+		dw	InitWall			;11	Wall
+		dw	0					;12	Laser (not used)
+		dw	InitWideShot		;13	Wide Shot
+		dw	0					;14	Free ship
+		dw	0					;15	Extra points
+		dw	0					;16	Defense powerup
+		dw	0					;17	Random powerup
+		dw	InitMPFreeze		;18	MP Freeze bullets
+		dw	InitMPShort			;19 MP Elec Short
+		dw	InitMPSlow			;20	MP Slow down
+		dw	InitMPDouble		;21	MP Point Double
+		dw	InitMPThrust		;22 MP Disable Thrust
+		dw	InitMPWeapon		;23 MP Disable Weapons
+	
+WeaponTask:
+		cp		24
+		ret		nc
+
+		ld		l,a
+		ld		h,0
+		
+		add		hl,hl
+		ld		de,WeaponTab
+		add		hl,de
+		
+		ld		a,(hli)
+		ld		h,(hl)
+		ld		l,a
+
+		or		h				; ! Check or null seqs
+		ret		z
+	
+		jp		(hl)
+
+****************************************
+*		Get Weapon count/time
+****************************************
+
+WeaponData:
+		db	0,0				;0	Standard Bullet
+		db	1,1				;1	Armageddon
+		db	1,3				;2	Normal Mines
+		db	1,3				;3	Guided Missiles
+		db	1,3				;4	GunSat
+		db	1,1				;5	Smart Bomb
+		db	#80,6			;6	Ion Deflector
+		db	1,2				;7	Super Thrust
+		db	1,3				;8	Drill Shot
+		db	1,3				;9	Ramming Shield
+		db	1,3				;10	Trigger Bomb
+		db	1,3				;11	Wall
+		db	1,0				;12	Laser (not used)
+		db	1,3				;13	Wide Shot		(3 wide shots)
+
+		db	2,0				;14	Free ship
+		db	3,0				;15	Extra points
+		db	4,0				;16	Defense powerup
+		db	5,0				;17	Random powerup (1-13)
+
+		db	1,3				;18	MP Freeze bullets
+		db	1,3				;19 MP Elec Short
+		db	1,3				;20	MP Slow down
+		db	1,3				;21	MP Point Double
+		db	1,3				;22 MP Disable Thrust
+		db	1,3				;23 MP Disable Weapons
+
+SetCollectData:
+		ld		e,a		;save the type
+
+		add		a,a
+		ld		c,a
+		ld		b,0
+		ld		hl,WeaponData
+		add		hl,bc
+
+		ld		a,(hli)
+		and		a
+		ret		z
+		
+		cp		2			;Free ship
+		jr		z,FreeShip
+		
+		cp		3			;Extra points
+		jr		z,XPoints
+
+		cp		4			;defence
+		jr		z,AddDefence
+
+		cp		5			;Random
+		jr		nz,@notrand
+
+		ld		c,14
+		call	Random_Range
+		jr		SetCollectData
+
+@notrand:
+
+		cp		#80			;Ion curtain
+		jr		nc,@once
+
+		ldx		a,B_Weapon
+		cp		e
+		jr		z,@Same
+
+@once:
+
+		ld		a,(hl)				;B weapons only
+		stx		B_Count,a
+		stx		B_Weapon,e
+
+		ld		a,e
+		call	SetWeap
+
+		ldx		a,B_Count
+		call	SetWeapNum
+		ret
+
+@same:
+		ld		c,(hl)	
+
+		ldx		a,B_Count		;B weapons only
+		cp		5
+		jr		nc,@points
+
+		add		a,c
+		cp		6
+		jr		c,@lt5
+
+		ld		a,5				;set to max
+
+@lt5:
+		stx		B_Count,a
+		stx		B_Weapon,e
+
+@no:	ld		a,e
+		call	SetWeap
+
+		ldx		a,B_Count
+		call	SetWeapNum
+		ret
+
+@points:
+		ld		a,e
+		call	SetWeap
+
+		ldx		a,B_Count
+		call	SetWeapNum
+
+		ldw		h,l,Score		;points for max pick up
+		ld		de,1
+		add		hl,de
+		stw		h,l,Score
+
+		ret
+
+FreeShip:
+		ldx		a,Ships
+		cp		5
+		ret		z
+		
+		inc		a
+		stx		Ships,a
+
+		call	SetShips
+
+		ld		a,14		
+		call	SetWeapMsg
+		ret
+
+XPoints:
+		ld		de,100
+		call	AddScore
+
+		ld		a,15		
+		call	SetWeapMsg
+
+		ret
+
+AddDefence:
+		ldx		a,DefCount
+		cp		5
+		ret		z
+		
+		inc		a
+		stx		DefCount,a
+
+		call	SetDefs
+
+		ld		a,16		
+		call	SetWeapMsg
+		ret
+
+****************************************
+*		    Reduce Weapon A
+****************************************
+
+DecWeaponA:
+		ldx		a,WideTime		;timed wide shot
+		and		a
+		ret		z
+
+		dec		a
+		stx		WideTime,a
+		ret
+
+****************************************
+*		    Reduce Weapon B
+****************************************
+
+DecWeaponB:
+		ldx		a,B_Count
+		and		a
+		ret		z
+
+		dec		a
+		stx		B_Count,a
+
+		call	SetWeapNum
+		ret
+
+****************************************
+*	    Run A Button Weapon
+*		   a = Weapon Type
+*		   b = Weapon Time
+****************************************
+
+Do_Weapon:
+		ld		e,a				;save weapon code
+		
+		stx		Type,a			;Save the type
+
+		ld		a,(ThisTask)	;save the parent task number
+		stx		Parent,a
+
+		xor		a				;Clear this tasks number
+		ld		(ThisTask),a
+
+		ld		a,e
+		jp		WeaponTask
+
+****************************************
+*		Clear the active weapon
+****************************************
+
+ClrWeapon:
+		ldx		a,Parent
+		cp		2
+		jr		z,@norem
+
+		ldba	B_Active,0			;set B_Active of task 0
+		cp		#ff
+		ret		z
+
+		xor		a
+		stba	B_Active,0			;set B_Active of task 0
+		ret
+
+@norem:
+		ldba	B_Active,1			;set B_Active of task 0
+		cp		#ff
+		ret		z
+
+		xor		a
+		stba	B_Active,1			;set B_Active of task 1
+		ret
+
+****************************************
+*			TestShipDie
+****************************************
+
+TestShipDie:
+
+		ldba	B_Active,0			;set B_Active of task 0
+		ld		c,a
+
+		ldx		a,Parent
+		cp		1
+		jr		z,@norem
+
+		ldba	B_Active,1			;set B_Active of task 1
+		ld		c,a
+		
+@norem:
+		ld		a,c
+		cp		#ff					;z set = kill weapon
+		ret
+		
+****************************************
+*		   Standard bullet
+****************************************
+
+InitShipBullet:
+
+;;		PlayFX	INST_fire1
+
+		ldx		c,Angle
+
+		ld		a,96					;(ShpBulSpd)
+		add		a,32
+		ld		b,a
+		call	AddScaleDir
+
+		ld		a,30						;(ShpBulLen)		;30
+		stx		Count,a
+
+;		call	AddVels
+;		call	AddVels
+
+		Move	RunBullet		
+		jp		AddTask
+
+RunBullet:
+
+		ld		hl,RockBul+1
+		call	IfHit
+		jr		c,@hit
+
+		call	AddVels
+
+;ARH could make these directional (need art)
+
+		ld		a,(Time)
+		and		1
+		ld		e,a
+
+		ld		hl,seq_shipbula
+;		ld		hl,seq_bullet		;Seq num
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+
+		ldx		a,angle				;get the index
+		rra
+		rra
+		rra
+		and		#1f
+		ld		d,a
+
+		ld		a,2					;set the group
+
+		CALL	DualIndexSeq
+
+		call	DecCounter
+		jr		z,QuitBullet
+
+		ret
+@hit:
+;		ld		de,1
+;		call	AddScore
+
+QuitBullet:
+
+		KillTask
+		ret
+
+
+****************************************
+*			Armageddon
+****************************************
+
+;armageddon need to be bigger
+
+InitArmaged:
+
+		Move	RunArmaged		
+		jp		AddTask
+
+RunArmaged:
+
+		ld		hl,seq_armfx
+		call	CallSeqPar
+
+		call	ClrWeapon
+		KillTask
+		ret
+
+****************************************
+*			Normal Mine
+****************************************
+
+;make these appear behind the ship
+;should expode if hit by an asteriod
+
+InitNormMine:
+
+		call	ClrWeapon
+
+		xor		a
+		ld		(ThisTask),a
+
+		ldx		a,Angle
+		rra
+		rra
+		rra
+		and		#1f
+		ld		d,a
+
+;		ldx		b,YCoordH			;Coords in bc
+;		ldx		c,XCoordH
+;		ld		hl,seq_thrust1		;Seq num
+;		ld		a,0					;set the group
+;		call	IndexSeq
+
+;		ld		a,(Seq_LX)
+;		stx		XCoordH,a
+
+;		ld		a,(Seq_LY)
+;		stx		YCoordH,a
+
+		ldx		a,Angle
+		add		a,128
+		ld		c,a
+		ld		a,#30
+		ld		b,a
+		call	AddScaleDir
+
+		ld		hl,seq_trigmine
+		call	InitSeq
+		stw		h,l,Anim
+
+		stx		Count,120		;mine time (frames)
+
+		Move	RunNormMine		
+		jp		AddTask
+
+RunNormMine:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	Drag
+
+		call	DecCounter
+		jr		z,@Quit
+		
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@Quit:
+		ld		hl,seq_trigexpl
+		jp		SequenceAny
+
+****************************************
+*		   Guided Missiles
+****************************************
+
+InitGMissile:
+		call	ClrWeapon
+
+		call	FindHoming
+		stx		HomeTask,a
+
+;		stx		FLAGS,Disable
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ldx		c,Angle
+		ld		a,#40
+		ld		b,a
+		call	AddScaleDir
+
+		stx		Count,200
+
+		ld		hl,seq_gm
+		call	InitSeq
+		stw		h,l,Anim
+
+		Move	RunGMissile		
+		jp		AddTask
+
+RunGMissile:
+
+		call	AddVels
+
+;		ldx		b,YCoordH			;Coords in bc
+;		ldx		c,XCoordH
+;		ld		hl,seq_mine			;Seq num
+;		ld		d,0					;get the index
+;		ld		a,2					;set the group
+;		CALL	IndexSeq
+
+		ldx		b,YCoordH			;Coords in de
+		ldx		c,XCoordH
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	DoHome
+
+		call	DecCounter
+		jr		z,@Quit
+		
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@Quit:
+		ld		hl,seq_midbang
+		jp		SequenceAny
+
+		KillTask
+		ret
+
+****************************************
+
+DoHome:
+		ldx		a,Count
+		cp		190
+		ret		nc
+
+		ldx		a,HomeTask
+		and		a
+		ret		z
+		
+		call	GetTaskCoords
+		
+@NoTask:
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		ld		b,a
+
+		ld		c,4
+		call	TurnAngle
+		
+		stx		Angle,a
+
+		ld		c,a
+		ld		a,#60
+		ld		b,a
+		call	SetScaleDir
+		ret
+
+****************************************
+*			Gun Sat
+****************************************
+
+;make gunsat take 1 hit from the ship
+
+InitGunSat:
+
+		ld		hl,seq_gsatmine
+		call	InitSeq
+		stw		h,l,Anim		;Use anim as seq handle
+
+		stx		Count,160		;gunsat duration
+
+		Move	RunGunSat		
+		jp		AddTask
+
+RunGunSat:
+
+		call	TestShipDie
+		jr		z,@killsat
+		
+		ldx		a,Parent			;get parent task
+		call	GetTaskCoords	
+
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		call	GunSatShoot
+
+		ld		hl,RockBul+1
+		call	IfHit
+		jr		c,@killsat
+
+		call	DecCounter
+		ret		nz
+
+@killsat:
+
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		call	ClrWeapon
+
+		KillTask
+		ret
+
+****************************************
+
+GunSatShoot:
+		ld		a,(Time)
+		and		15
+		ret		nz
+
+		call	FindHoming
+		and		a
+		ret		z
+		stx		HomeTask,a
+
+;** get the dir etc
+		
+		call	GetTaskCoords
+
+		ldx		e,XCoordH
+		ld		a,c
+		sub		e
+		ld		c,a
+
+		ldx		e,YCoordH
+		ld		a,b
+		sub		e
+		ld		b,a
+
+		call	FindAngle
+		stx		Angle,a
+
+		call	PushTask
+		
+		call	InitSatBullet	;fire gun
+		
+		call	PopTask
+
+		ret
+
+****************************************
+*		   GunSat bullet
+****************************************
+
+InitSatBullet:
+;		stx		FLAGS,Disable
+
+		xor		a
+		ld		(ThisTask),a
+
+		xor		a
+		stx		XCoord,a
+		stx		YCoord,a
+
+		ld		a,(Seq_LX)
+		stx		XCoordH,a
+
+		ld		a,(Seq_LY)
+		stx		YCoordH,a
+		
+		ldx		c,Angle
+
+		ld		a,#60
+		ld		b,a
+		call	AddScaleDir
+
+		ld		a,30
+		stx		Count,a
+
+;		call	AddVels
+;		call	AddVels
+
+		Move	RunSatBullet		
+		jp		AddTask
+
+RunSatBullet:
+
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_bullet		;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@Quit:
+		KillTask
+		ret
+
+****************************************
+*			Smart Bomb
+****************************************
+
+;not being activated properly
+
+InitSmart:
+
+		call	ClrWeapon
+
+		xor		a
+		ld		(ThisTask),a
+
+		Move	RunSmart		
+		jp		AddTask
+
+RunSmart:
+		ld		hl,seq_armfx		;seq_sbfx
+		jp		SeqParent
+
+****************************************
+*			Super Thrust
+****************************************
+
+;ok
+
+InitSThrust:
+		stx		Count,50			;how long
+
+		Move	RunSThrust		
+		jp		AddTask
+
+RunSThrust:
+		ldx		a,Parent			;get parent task
+		call	GetTaskCoords
+
+		rra
+		rra
+		rra
+		and		31
+		ld		d,a					;get the index
+
+		ld		hl,seq_swordfx1_1		;Seq num
+
+		ldx		a,Count
+		and		3
+		ld		e,a
+
+		call	DualIndexSeq
+
+		call	DecCounter
+		ret		nz
+
+		call	ClrWeapon
+		KillTask
+		ret
+
+****************************************
+*			Drill Shot
+****************************************
+
+;must home on another object
+
+InitDrill:
+		call	ClrWeapon
+
+		ldx		c,Angle
+		ld		b,80
+		call	AddScaleDir
+
+		stx		Count,60
+		stx		Count2,4
+
+		Move	RunDrill		
+		jp		AddTask
+
+RunDrill:
+		call	AddVels
+
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_bullet		;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+		call	Random
+		sra		a
+		ld		c,a
+
+		ldx		a,angle
+		add		a,128
+		add		a,c
+		ld		c,a
+		ld		b,80
+		call	SetScaleDir
+
+		ldx		a,Count2
+		dec		a
+		stx		Count2,a
+
+		ret		nz
+
+@Quit:
+
+		KillTask
+		ret
+
+
+****************************************
+*			Ram Shield
+****************************************
+
+;ok
+
+InitRShield:
+
+		ld		hl,seq_rsfx
+		call	InitSeq
+		stw		h,l,Anim					;Use anim as seq handle
+
+		Move	RunRShield		
+		jp		AddTask
+
+RunRShield:
+
+		call	TestShipDie
+		jr		z,@kill
+
+		ldx		a,Parent			;get parent task
+		call	GetTaskCoords
+
+		ldw		h,l,Anim			;Seq handle in anim
+		call	RunSeq
+
+		ld		a,(Seq_Alpha)
+		cp		#ff
+		ret		nz
+
+@kill:
+		ldw		h,l,Anim			;Delete the seq
+		call	KillSeq
+
+		call	ClrWeapon
+		KillTask
+		ret
+
+****************************************
+*		   Trigger Mine
+****************************************
+
+;blow up own ship ?
+
+InitTrigMine:
+
+		call	ClrWeapon
+
+		xor		a
+		ld		(ThisTask),a
+		
+		ldx		c,Angle
+
+		ld		a,#40
+		ld		b,a
+		call	AddScaleDir
+
+		ld		a,40
+		stx		Count,a
+
+		Move	RunTrigMine		
+		jp		AddTask
+
+RunTrigMine:
+
+		call	AddVels
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+		ld		hl,seq_tbomb			;Seq num
+		ld		d,0					;get the index
+		ld		a,2					;set the group
+		CALL	IndexSeq
+
+		call	DecCounter
+		jr		z,@Quit
+		
+		ld		A,(Keys)
+		bit    	BIT_KEY_B,A
+		jp		z,@Quit
+
+		ld		hl,RockBul+1
+		call	IfHit
+		ret		nc
+
+@Quit:
+		ld		hl,seq_armfx
+		jp		SequenceAny
+
+		KillTask
+		ret
+
+****************************************
+*				Wall
+****************************************
+
+InitWall:
+		call	ClrWeapon
+
+		xor		a
+		ld		(ThisTask),a
+
+		Move	RunWall		
+		jp		AddTask
+
+RunWall:
+		ld		hl,seq_wall
+		jp		SequenceAny
+
+****************************************
+*			Wide Shot
+****************************************
+
+;din't work ? check !
+
+InitWideShot:
+
+		Move	RunWide		
+		jp		AddTask
+
+RunWide:
+		ldx		a,Angle
+		sub		8
+		stx		Angle,a
+
+		call	PushTask		
+		call	InitShipBullet
+		call	PopTask
+
+		ldx		a,Angle
+		add		a,8
+		stx		Angle,a
+		
+		call	PushTask		
+		call	InitShipBullet
+		call	PopTask
+
+		ldx		a,Angle
+		add		a,8
+		stx		Angle,a
+		
+		call	InitShipBullet
+
+		KillTask
+		ret
+
+****************************************
+*			Ion Curtain
+****************************************
+
+InitIon:
+		ld		a,(CurtainTrig)
+		and		a
+		ret		nz
+		
+		ld		a,1
+		ld		(CurtainTrig),a
+
+		call	ClrWeapon
+		ret
+
+****************************************
+*		 MP Freeze bullets
+****************************************
+
+InitMPFreeze:
+
+		call	ClrWeapon
+
+		ld		hl,seq_mpbul
+		ld		b,#60
+		ld		c,60
+		ld		a,1
+		jp		InitMPBullet
+
+****************************************
+*		 MP Elec Short
+****************************************
+
+InitMPShort:
+		call	ClrWeapon
+
+		ld		hl,seq_mpbul
+		ld		b,#60
+		ld		c,60
+		ld		a,2
+		jp		InitMPBullet
+
+****************************************
+*		 MP Slow down
+****************************************
+
+InitMPSlow:
+		call	ClrWeapon
+
+		ld		hl,seq_mpbul
+		ld		b,#60
+		ld		c,60
+		ld		a,3
+		jp		InitMPBullet
+
+****************************************
+*		 MP Point Double
+****************************************
+
+InitMPDouble:
+		call	ClrWeapon
+
+		ld		hl,seq_mpbul
+		ld		b,#60
+		ld		c,60
+		ld		a,4
+		jp		InitMPBullet
+
+****************************************
+*		 MP Disable Thrust
+****************************************
+
+InitMPThrust:
+		call	ClrWeapon
+
+		ld		hl,seq_mpbul
+		ld		b,#60
+		ld		c,60
+		ld		a,5
+		jp		InitMPBullet
+
+****************************************
+*		 MP Disable Weapons
+****************************************
+
+InitMPWeapon:
+		call	ClrWeapon
+
+		ld		hl,seq_mpbul
+		ld		b,#60
+		ld		c,60
+		ld		a,6
+		jp		InitMPBullet
+
+****************************************
+*				Wall
+****************************************
+
+;InitMPTest:
+;		ld		a,3
+;		stx		Type,a
+;
+;		call	ClrWeapon
+;
+;		stx		XCoordH,80
+;		stx		XCoord,0
+;
+;;		stx		YCoordH,72
+;;		stx		YCoord,0
+;
+;		xor		a
+;		ld		(ThisTask),a
+;
+;		Move	RunMpTest		
+;		jp		AddTask
+;
+;RunMpTest:
+;		ld		hl,seq_testmp
+;		jp		SequenceAny
+
+****************************************
+*	  Generic Multiplayer bullet
+*		 hl = seq for bullet
+*		 b  = Speed
+*		 c  = Time to live
+****************************************
+
+InitMPBullet:
+
+		stx		Type,a
+		stx		Count,c
+
+		stw		h,l,Anim
+		ldx		c,Angle
+
+		call	AddScaleDir
+
+		Move	RunMPBullet		
+		jp		AddTask
+
+RunMPBullet:
+
+		ld		hl,ShipMPWeap+1
+		call	IfHit
+		jr		c,@hit
+
+		call	AddVels
+
+		ldw		h,l,Anim
+		ldx		b,YCoordH			;Coords in bc
+		ldx		c,XCoordH
+
+;		ldx		a,angle				;get the index
+;		rra
+;		rra
+;		rra
+;		and		#1f
+;		ld		d,a
+
+		ld		d,0
+		ld		a,2					;set the group
+
+		CALL	IndexSeq
+
+		call	DecCounter
+		ret		nz
+
+@hit:
+		KillTask
+		ret

@@ -1,0 +1,530 @@
+********************************************************************************
+*				    Grouped Bucket Sort Collision Engine
+* 		     (C) Copyright A.R.Hartley GameTaker Systems 1991-99
+********************************************************************************
+
+			MemB	FreeBucket				;The free bucket pointer
+			MemB	BucketCount				;Amount of buckets filled
+			MemB	ThisBucket				;Temp bucket variable
+			MemB	ThisGroup				;Temp Group number
+
+BucketMax	equ		255
+
+****************************************
+*			 Structure
+*
+*	Tables			Each Page Bound
+*   ------
+*	Col_First		First Entry
+*	Col_Last		Last Entry
+*	Col_StartX		X Start
+*	Col_EndX		X End
+*	Col_StartY		Y Start
+*	Col_EndY		Y End
+*	Col_Task		Task number
+*	Col_Next		Next Bucket
+*
+*	Col_Groups		Collision Groups
+*	Col_NotifyL		Notifier Data
+*	Col_NotifyH
+****************************************
+
+		MemB	LogCount
+
+****************************************
+*	   Init Collision Buffers
+****************************************
+
+InitCollisions:
+
+		xor		a					;Reset read bucket
+		ld		(FreeBucket),a
+		ld		(LogCount),a
+
+		ld		hl,HitList			;Set the hit list pointer
+		stm		HListPtr,hl
+
+		ld		hl,Col_First		;First Entry Buffers
+		ld		b,256/8
+		ld		a,#ff
+@loop:
+		ld		(hli),a				;Clear out first bucket entries
+		ld		(hli),a
+		ld		(hli),a
+		ld		(hli),a
+
+		ld		(hli),a
+		ld		(hli),a
+		ld		(hli),a
+		ld		(hli),a
+
+		dec		b
+		jr		nz,@loop
+		ret
+
+****************************************
+*	    Init Collision Buffers
+*  bc = StartY:StartX : de = EndY:EndX
+*			 a = group
+****************************************
+
+AddCollision:		
+		and		a
+		ret		z
+
+		push	af
+		
+		ld		a,b
+		add		a,40
+		ld		b,a
+
+		ld		a,c
+		add		a,40
+		ld		c,a
+
+		ld		a,d
+		add		a,40
+		ld		d,a
+
+		ld		a,e
+		add		a,40
+		ld		e,a
+
+		pop		af
+
+		ld		h,>Col_First		;Point to the group list
+		ld		l,a					;set group ptr
+
+		ld		(ThisGroup),a		;Save this group number
+
+		ld		a,c					;c = startx
+		cp		e					;e = endx
+		ret		nc
+
+		ld		a,b					;c = starty
+		cp		d					;e = endy
+		ret		nc
+
+		ld		a,(ThisTask)
+		and		a
+		ret		z
+
+		ld		a,(hl)				;get the First bucket link
+		cp		#ff					;if it's #ff then this is the first entry
+		jr		nz,@NextEntry
+
+		ld		a,(FreeBucket)		;Get the next free bucket
+		ld		(hl),a				;make it the first bucket
+
+		jr		@nofixup
+		
+@NextEntry:
+
+		ld		a,(FreeBucket)		;Get the next free bucket
+
+		; Fix up the last entered bucket
+
+		inc		h					;move to the last entry bucket link
+		ld		l,(hl)				;get the last bucket link
+		ld		h,>Col_Next			;Now point to the last buckets next ptr
+		ld		(hl),a				;Set it's next to the new bucket
+
+@nofixup:
+
+		ld		l,a					;Move to the new bucket
+		ld		h,>Col_StartX		;To its x pos
+		
+		ld		(hl),c				;Set the X Start
+		inc		h
+	
+		ld		(hl),e				;Set the X End
+		inc		h
+
+		ld		(hl),b				;Set the Y Start
+		inc		h
+
+		ld		(hl),d				;Set the Y End
+		inc		h
+
+		ld		a,(ThisTask)		;Get the calling task number
+		ld		(hl),a				;Set the task buffer
+		inc		h
+
+		xor		a					;Say this is the last buffer
+		ld		(hl),a				;Set the NextEntry buffer
+		inc		h
+		
+		ld		a,(ThisGroup)		;Set the last bucket for this group
+		ld		l,a
+		ld		h,>Col_Last
+		ld		a,(FreeBucket)		;to the last 
+		ld		(hl),a
+
+		inc		a					;Move to next bucket
+		ld		(FreeBucket),a
+
+		ret
+
+****************************************
+*	  Setup a collision notifier
+*		 de = Group1 & Group2
+*		 hl = Notifier Word
+****************************************
+
+HitGroup:
+		ld		b,h
+		ld		c,l
+
+		ldm		hl,HListPtr
+		ld		(hl),e
+		inc		hl
+		ld		(hl),d
+		inc		hl
+		ld		(hl),c
+		inc		hl
+		ld		(hl),b
+		inc		hl
+		stm		HListPtr,hl
+
+		ld		hl,LogCount
+		inc		(hl)
+		ret
+
+****************************************
+*		Run All Group Collisions
+*
+****************************************
+
+RunHitList:
+		ld		a,(LogCount)
+		and		a
+		ret		z
+
+		ld		hl,HitList
+		ld		b,a
+
+@loop:
+		push	bc
+		
+		ld		e,(hl)
+		inc		hl
+		ld		d,(hl)
+		inc		hl
+	
+		push	hl
+		call	TestGroups
+		pop		hl
+
+		ld		c,(hl)
+		inc		hl
+		ld		b,(hl)
+		inc		hl
+
+		ld		(bc),a			;Notify
+		inc		bc
+
+		ld		a,e
+		ld		(bc),a			;Notify again
+
+		pop		bc
+
+		dec		b
+		jr		nz,@loop
+
+		xor		a					;Reset read bucket
+		ld		(LogCount),a
+		ret
+
+****************************************
+*			  Hit Group
+* 		DE = Group1 & Group2
+*RET:	 A = Task number of Group2
+*		 E = Task number of Group1 
+****************************************
+
+		MemB	Bucket2
+
+TestGroups:
+		
+		ld		l,e					;Find the group 2's bucket position
+		ld		h,>Col_First		
+		ld		a,(hl)
+
+		cp		#ff					;if this bucket is empty the return
+		jp		z,@Exit0
+
+		ld		(Bucket2),a			;Save the group 2 bucket
+
+		ld		l,d					;Find the group1 index
+		ld		a,(hl)
+
+		cp		#ff					;if this bucket is empty the return
+		jp		z,@Exit0
+
+		ld		l,a
+
+@loop1:
+		ld		h,>Col_StartX		;hl now points to the group 1 bucket StartX
+
+		ld		c,(hl)				;Get X Start
+		inc		h
+
+		ld		e,(hl)				;Get X End
+		inc		h
+
+		ld		b,(hl)				;Get Y Start
+		inc		h
+
+		ld		d,(hl)				;Get Y End
+
+		push	hl					;Save group 1 bucket
+		
+;---------------------------------------
+;		Test for box collisions
+;---------------------------------------
+;		c = X_Start : e = X_End
+;		b = Y_Start : d = Y_End
+;---------------------------------------
+
+		ld		a,(Bucket2)			;Start at the top of group 2 bucket
+
+@loop2:
+		ld		h,>Col_StartX
+		ld		l,a
+	
+		ld		a,(hl)				;Is Start2 > End1 ?
+		cp		e
+		jr		nc,@nohit
+		inc		h
+
+		ld		a,c					;Is Start1 > End2 ?	
+		cp		(hl)
+		jr		nc,@nohit
+		inc		h
+
+		ld		a,(hl)				;Is T_Start > Y_End ?
+		cp		d
+		jr		nc,@nohit
+		inc		h
+
+		ld		a,b					;Is Y_Start > T_End ?	
+		cp		(hl)
+		jr		nc,@nohit
+
+@hit:
+		inc		h
+		ld		a,(hl)				;Get this task number
+		
+		pop		hl					;Drop group 1's bucket, no longer needed
+
+		inc		h					;Get 1 task number
+		ld		e,(hl)		
+		ret
+				
+@nohit:
+		ld		h,>Col_Next			;get the next bucket ptr (in group 2)
+
+		ld		a,(hl)				;get the data and check it
+		and		a					;last bucket ?
+		jr		nz,@loop2			;exit loop if so
+
+;---------------------------------------
+;		Get Next Bucket in Group 1
+;---------------------------------------
+
+		pop		hl					;Retrieve Group 1 bucket list
+
+		ld		h,>Col_Next			;get the next bucket ptr
+		ld		a,(hl)				;get the data and check it
+		ld		l,a
+
+		and		a					;last bucket ?
+		jr		nz,@loop1			;return if so
+
+@Exit0:
+		xor		a					;return null
+		ld		e,a
+		ret
+
+****************************************
+*     Dump a collision to console
+****************************************
+
+		if 0
+
+DumpCol:	bug
+
+			ld	h,>Col_First
+			ld	l,0
+			ld	b,6
+
+@loop:
+			push hl
+			push bc
+			pop	bc
+			
+			call ColLine
+			
+			pop	hl
+			inc	l
+			dec b
+			jr	nz,@loop
+			ret
+
+ColLine:
+			call	ConPrint
+			db		"Group =",0
+
+			ld		a,l
+			call	conhex
+
+			call	ConPrint
+			db		" F=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+			call	ConPrint
+			db		" L=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+
+			call	ConPrint
+			db		" XS=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+
+			call	ConPrint
+			db		" XE=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+
+			call	ConPrint
+			db		" YS=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+
+			call	ConPrint
+			db		" YE=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+
+			call	ConPrint
+			db		" T=",0
+
+			ld		a,(hl)
+			call	conhex
+			inc		h
+
+
+			call	ConPrint
+			db		" N=",0
+			
+			ld		a,(hl)
+			call	conhex
+
+			call	conprint
+			db		13,10,0
+			ret
+
+
+****************************************
+* Write a Hex Number to Console
+****************************************
+
+****************************************
+*	     PRINT A STRING
+****************************************
+
+ConPrint:
+		
+		POP	de
+
+@LOOP	LD	A,(de)
+		CP	STOP
+		JP	Z,@END
+
+		BugChar		
+
+		INC	de
+		JP	@LOOP
+		
+@END:
+		INC	de
+		push de
+		ret
+
+CONHEX:
+			push	hl
+			push	de
+			push	bc
+			
+			LD		C,A
+			SWAP	A
+			AND		#0F
+			LD		HL,HEXTAB
+			LD		E,A
+			LD		D,0
+			ADD		HL,DE
+			LD		A,(HL)
+	
+			BugChar
+			
+			LD	A,C
+			AND	#0F
+			LD	HL,HEXTAB
+			LD	E,A
+			LD	D,0
+			ADD	HL,DE
+			LD	A,(HL)
+			BugChar
+			
+			pop	bc
+			pop	de
+			pop	hl
+			RET
+
+CONHEX16:
+			LD		A,d
+			CALL	CONHEX
+
+			LD		A,e
+			CALL	CONHEX
+			RET
+
+
+CONENT:
+			ld	a,13
+			BugChar
+			ld	a,10
+			BugChar
+      		RET
+
+CONSPC:
+			ld	a,32
+			BugChar
+      		RET
+
+CONTAB:
+			ld	a,9
+			BugChar
+      		RET
+
+
+		endif
